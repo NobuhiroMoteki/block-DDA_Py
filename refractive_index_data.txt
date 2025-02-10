@@ -1,0 +1,38 @@
+#### Refractive index data of minerals from mindat.org (@ mid-visible wavelength)
+#Quartz Uniaxial, positive
+m_p_x= 1.544+0j
+m_p_y= 1.544+0j
+m_p_z= 1.553+0j
+
+#Mica(Muscovite) Biaxial
+# m_p_x= 1.564+0j
+# m_p_y= 1.599+0j
+# m_p_z= 1.603+0j
+
+#Kaolinite Biaxial
+m_p_x= 1.558+0j
+m_p_y= 1.564+0j
+m_p_z= 1.565+0j
+
+#Calcite Uniaxial, negative
+m_p_x= 1.658+0j
+m_p_y= 1.658+0j
+m_p_z= 1.486+0j
+
+#Aragonite Biaxial
+m_p_x= 1.5295+0j
+m_p_y= 1.681+0j
+m_p_z= 1.6855+0j
+
+
+#### Refractive index estimated from experience (@ mid-visible wavelength)
+#Organics
+m_p_x= 1.46+0j
+m_p_y= 1.46+0j
+m_p_z= 1.46+0j
+
+#Bacteria
+m_p_x= 1.36+0j
+m_p_y= 1.36+0j
+m_p_z= 1.36+0j
+

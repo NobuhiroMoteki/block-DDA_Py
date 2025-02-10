@@ -1,15 +1,15 @@
-# Project Name
+# block-DDA_Py
 
 ## 📌 Description
-A brief description of the project.
+A python code for the discrete dipole approximation using block-Krylov type iterative solvers
 
 ---
 
 ## 🚀 Installation
 ### 1️⃣ Clone the repository
 ```sh
-git clone https://github.com/USERNAME/REPOSITORY.git
-cd REPOSITORY
+git clone https://github.com/NobuhiroMoteki/block-DDA_Py.git
+cd block-DDA_Py
 ```
 
 ### 2️⃣ Install dependencies

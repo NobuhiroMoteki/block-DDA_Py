@@ -89,7 +89,8 @@ with h5py.File(output_dda_hdf5_file, "r+") as h5:
                                         S_fw_PCAS_theta = np.nan
                                         S_fw_PCAS_phi= np.nan
                                         S_bk_OCBS= np.nan                   
-                                    
+                                
+                                h5['target']['simulated_data']['Euler_angles'][ind_m_m_list, ind_r_v_base_list, ind_bc_ratio_list, ind_ab_ratio_list, ind_gre_beta_list, i_start:i_end, :] = euler_angles_radian
                                 h5['target']['simulated_data']['C_abs'][ind_m_m_list, ind_r_v_base_list, ind_bc_ratio_list, ind_ab_ratio_list, ind_gre_beta_list, i_start:i_end] = C_abs
                                 h5['target']['simulated_data']['C_ext'][ind_m_m_list, ind_r_v_base_list, ind_bc_ratio_list, ind_ab_ratio_list, ind_gre_beta_list, i_start:i_end] = C_ext
                                 h5['target']['simulated_data']['S_fw_PCAS_theta'][ind_m_m_list, ind_r_v_base_list, ind_bc_ratio_list, ind_ab_ratio_list, ind_gre_beta_list, i_start:i_end] = S_fw_PCAS_theta

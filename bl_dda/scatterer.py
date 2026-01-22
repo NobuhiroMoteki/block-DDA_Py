@@ -156,9 +156,6 @@ class DiscreteDipoles(Target, IncidentField):
         self.S_PCAS_depol= None
         self.S_PCAS_depol_SNR= None
 
-        self.ReS_fw_noise= 0.0043 # [um], measured background noise (1-standard deviation) in 20230525 experiment
-        self.ImS_fw_noise= 0.0030 # [um], measured background noise (1-standard deviation) in 20230525 experiment
-
         print("Number of dipoles per wavelength in the particle volume: dpl= {:}".format(self.dpl))
 
 
@@ -263,28 +260,6 @@ class DiscreteDipoles(Target, IncidentField):
         return self.S_bk_OCBS
     
 
-    def compute_PCAS_observable_S_fw_and_its_SNR(self):
-
-        self.ReS_PCAS_sp_avg= (self.S_fw_PCAS_theta.real + self.S_fw_PCAS_phi.real)/2
-        self.ImS_PCAS_sp_avg= (self.S_fw_PCAS_theta.imag + self.S_fw_PCAS_phi.imag)/2
-
-        ReS_sp_avg_noise=  self.ReS_fw_noise/np.sqrt(2)
-        ImS_sp_avg_noise=  self.ImS_fw_noise/np.sqrt(2)
-
-        self.ReS_PCAS_sp_avg_SNR= self.ReS_PCAS_sp_avg/ReS_sp_avg_noise
-        self.ImS_PCAS_sp_avg_SNR= self.ImS_PCAS_sp_avg/ImS_sp_avg_noise
-
-        self.ReS_PCAS_depol= (self.S_fw_PCAS_theta.real - self.S_fw_PCAS_phi.real)/(self.S_fw_PCAS_theta.real + self.S_fw_PCAS_phi.real)
-        self.ImS_PCAS_depol= (self.S_fw_PCAS_theta.imag - self.S_fw_PCAS_phi.imag)/(self.S_fw_PCAS_theta.imag + self.S_fw_PCAS_phi.imag)
-
-        ReS_depol_noise= np.sqrt(2*(1+self.ReS_PCAS_depol**2))*self.ReS_fw_noise/np.abs(self.S_fw_PCAS_theta.real + self.S_fw_PCAS_phi.real)
-        ImS_depol_noise= np.sqrt(2*(1+self.ImS_PCAS_depol**2))*self.ImS_fw_noise/np.abs(self.S_fw_PCAS_theta.imag + self.S_fw_PCAS_phi.imag)
-
-        self.ReS_PCAS_depol_SNR= self.ReS_PCAS_depol/ReS_depol_noise
-        self.ImS_PCAS_depol_SNR= self.ImS_PCAS_depol/ImS_depol_noise
-
-    
-        return  self.ReS_PCAS_sp_avg, self.ImS_PCAS_sp_avg, self.ReS_PCAS_sp_avg_SNR, self.ImS_PCAS_sp_avg_SNR, self.ReS_PCAS_depol, self.ImS_PCAS_depol, self.ReS_PCAS_depol_SNR, self.ImS_PCAS_depol_SNR
 
 
 

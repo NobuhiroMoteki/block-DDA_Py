@@ -67,7 +67,7 @@ class gaussian_ellipsoid_shape_model:
         # Define the base ellipsoid a >= b >= c
         #### length_unit= um ###
         self.r_v_base= r_v_base  # allowed range = [0.1, 0.5], volume equivalent radius of base ellipsoid
-        self.bc_ratio= bc_ratio # allowed range = [1.0, 5.0], b/c ratio of base ellipsoid
+        self.bc_ratio= bc_ratio # allowed range = [1.0, 7.0], b/c ratio of base ellipsoid
         self.ab_ratio= ab_ratio # allowed range = [1.0, 2.0], a/b ratio of base ellipsoid
         self.beta= beta # standard deviation of GE surface deformation, allowed range= [0, 0.3]
         self.name= None

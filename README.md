@@ -19,7 +19,7 @@ A python code for the discrete dipole approximation using block-Krylov type iter
 
 ### Limitations
 
-There are some notable limitations of current block-DDA_Py (v0.1.1):
+There are some notable limitations of current block-DDA_Py (v0.2.1):
 
 1. Supported shape model is only GRE. 
 2. Current shape model supports only single-component particles (refractive index is uniform inside each particle).
@@ -32,7 +32,7 @@ I'll remove these limitations upon user's requests and application needs.
 
 ## 🚀 Installation
 
-The author developed and tested current block-DDA_Py (v0.1.1) using Python 3.12.8 in Windows 11 machines.
+The author developed and tested current block-DDA_Py (v0.2.1) using Python 3.12.8 in Windows 11 machines.
 
 #### 1. Clone the repository
 ```sh

@@ -115,9 +115,9 @@ where `N_cuboid = Nx × Ny × Nz` is the total number of cuboid grid cells (incl
 
 The cuboid size scales approximately as:
 
-$$N_\text{cuboid} \approx \left(\frac{34\, r_v\, m_m}{\lambda_0}\right)^3$$
+$$N_\text{cuboid} \approx \left(\frac{34 \times r_v \times m_m}{\lambda_0}\right)^3$$
 
-(assuming a dipole-to-wavelength ratio of 1/17, which is typical).
+The factor 34 = 2 × 17 arises from two steps: (1) the cuboid must span the particle diameter 2r_v, and (2) the lattice spacing is set to d ≈ λ_medium / 17 = λ₀ / (17 m_m) (the ratio of dipole side length to medium wavelength is typically 14–20; 17 is used here as a representative midpoint).
 
 #### Practical examples (λ₀ = 0.55 μm, m_m = 1.0)
 

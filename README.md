@@ -83,6 +83,57 @@ uv pip install -r requirements.txt
 
 ---
 
+## ⚡ Performance
+
+### Multi-core CPU parallelism
+
+block-DDA_Py achieves multi-core parallelism through two complementary mechanisms — no external parallelization library (ray, multiprocessing, etc.) is needed.
+
+| Layer | Mechanism | How to control |
+|-------|-----------|----------------|
+| **FFT** | `scipy.fft` multi-threaded 3D FFT | `_FFT_WORKERS = max(1, cpu_count − 2)` (auto); override with `DDA_FFT_WORKERS=N python run_dda.py` |
+| **Block-Krylov** | All *L* orientations processed simultaneously in each Krylov iteration via NumPy/SciPy broadcasting and BLAS multi-threading | Controlled by `num_orientations` (= *L*) |
+
+By default, the FFT uses all available CPU cores minus 2 (to keep the system responsive).
+To dedicate all cores, set:
+```sh
+DDA_FFT_WORKERS=$(nproc) python run_dda.py
+```
+
+### Memory requirements
+
+The two dominant memory consumers are:
+
+| Array | Shape | Size formula |
+|-------|-------|--------------|
+| Interaction tensor FFT (static, allocated once) | `(2Nx, 2Ny, 2Nz, 3, 3)` complex128 | `1152 × N_cuboid` bytes |
+| Block polarization arrays (peak, during MVP) | `(2Nx, 2Ny, 2Nz, 3, L)` × 2 complex128 | `768 × L × N_cuboid` bytes |
+
+**Peak memory ≈ `(1152 + 768 × L) × N_cuboid` bytes**
+
+where `N_cuboid = Nx × Ny × Nz` is the total number of cuboid grid cells (including vacuum) and `L` is the number of orientations.
+
+The cuboid size scales approximately as:
+
+$$N_\text{cuboid} \approx \left(\frac{34\, r_v\, m_m}{\lambda_0}\right)^3$$
+
+(assuming a dipole-to-wavelength ratio of 1/17, which is typical).
+
+#### Practical examples (λ₀ = 0.55 μm, m_m = 1.0)
+
+| r_v (μm) | L (orientations) | N_cuboid (approx.) | Peak memory |
+|----------|------------------|--------------------|-------------|
+| 0.3      | 10               | ~7,000             | ~70 MB      |
+| 0.3      | 100              | ~7,000             | ~545 MB     |
+| 0.5      | 10               | ~30,000            | ~295 MB     |
+| 0.5      | 100              | ~30,000            | ~2.4 GB     |
+| 1.0      | 10               | ~240,000           | ~2.4 GB     |
+| 1.0      | 50               | ~240,000           | ~9.4 GB     |
+
+> **Tip**: To fit within available RAM, reduce `num_orientations` (= *L*). For large particles, run separate sweeps with smaller *L* and merge the HDF5 results.
+
+---
+
 ## 🔄 Changes from Previous Version
 
 ### Algorithm

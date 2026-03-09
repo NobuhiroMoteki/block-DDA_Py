@@ -1,176 +1,187 @@
 import numpy as np
-from mvp_fft.mvp_fft import MBT_fft_mvp
+from mvp_fft.mvp_fft import fft_mvp
 
-def bl_cocg_rq_jacobi_mvp_fft(n,f,address,Au_til,DIAG_A,B,tol,itermax):
-    ''' 
-    solving a block matrix equation AX=B for complex-symmetric BT matrix A,
-    Gu et al 2016, arXiv, Block variants of COCG and COCR methods
-    for solving complex symmetric linear systems with L right-hand sides
 
-    *************************** Input parameters *****************************************
-     n=[n1,n2,...,nM]     number of BT_blocks at each level, where M is the number of BT levels. 1D np.array with size M, dtype=int
-     f                    size of final dense f*f matrix (e.g., f=3 for 3*3 matrix)
-     address              array of the cuboid-coordinate index of target volume elements.  
-     Au_til               fourier-transformed MBT projection of MBT matrix, non-diagonal part of the interaction matrix A
-     DIAG_A               diagonal part of the interaction matrix A with size= f*len(address)
-     B                    RHS block matrix with size=(f*len(address),L), column vectors of B must be linearly independent
-     tol                  error tolerance of convergence (typically 1e-3 or 1e-4)
-     itermax              maximum number of iteration
-     fft_object           instance of pyfftw.FFTW object (direction = 'FORWARD') created in the MBT_fft_init
-     ifft_object          instance of pyfftw.FFTW object (direction = 'BACKWARD') created in the MBT_fft_init
-     *************************** Output ***************************************************
-     X                    solution block matrix with size=(f*len(address),L) 
-     iter_fin             number of iterations   
-     err_fin              result vector
-     **************************************************************************************
-    '''
-    num_element_occupy= len(address)
-    num_element_cuboid= np.prod(n)
-    L= B.shape[1] # number of columns of RHS vector
+def _build_scatter_index(address, f):
+    """
+    Build an index array that maps sparse-vector positions to full-grid positions.
 
-    jpre= 1/DIAG_A
+    For the m-th occupied dipole:
+        sparse position  : f*m + c   (c = 0..f-1)
+        full-grid position: f*address[m] + c
 
-    B_jpre= np.zeros((B.shape[0],B.shape[1]), dtype=np.complex128)
+    Parameters
+    ----------
+    address : 1-D int array of length N_occ
+    f       : int (3 for electric dipoles)
 
-    for l in range(L):
-        B_jpre[:,l]= jpre*B[:,l]
+    Returns
+    -------
+    full_idx : 1-D int array of length f*N_occ
+        full_idx[f*m + c] = f*address[m] + c
+    """
+    return (np.repeat(address, f) * f
+            + np.tile(np.arange(f), len(address)))
 
-    B_jpre_norm= np.linalg.norm(B_jpre)
-    X= np.zeros((B.shape[0],L), dtype=np.complex128) # Intial guess of the solution matrix X (zero matrix)
 
-    Q, xi= np.linalg.qr(B_jpre, mode='reduced') # reduced QR decomposition of B_jpre
-    S= Q
+def _block_mvp(n, f, Au_til, full_idx, DIAG_A, S, jpre):
+    """
+    Compute  AS = jpre * (DIAG_A * S + A_offdiag * S)  for all L columns at once.
 
-    Q1= np.zeros((B.shape[0],L), dtype=np.complex128)
-    P_hat= np.zeros((f*num_element_cuboid,L), dtype=np.complex128)
-    AS= np.zeros((B.shape[0],L), dtype=np.complex128)
+    Parameters
+    ----------
+    n       : array_like [Nx, Ny, Nz]
+    f       : int
+    Au_til  : ndarray (2Nx,2Ny,2Nz,3,3) – pre-FFT interaction tensor
+    full_idx: 1-D int array from _build_scatter_index
+    DIAG_A  : 1-D complex array of length f*N_occ  – diagonal of A
+    S       : 2-D complex array (f*N_occ, L)
+    jpre    : 1-D complex array of length f*N_occ  – Jacobi preconditioner (1/DIAG_A)
+
+    Returns
+    -------
+    AS : ndarray (f*N_occ, L)
+    """
+    num_element_cuboid = np.prod(n)
+
+    # Scatter: sparse (f*N_occ, L) -> full cuboid (f*prod(n), L)
+    P_hat = np.zeros((f * num_element_cuboid, S.shape[1]), dtype=np.complex128)
+    P_hat[full_idx, :] = S
+
+    # Block MVP for all L columns in one call
+    AP_full = fft_mvp(n, f, Au_til, P_hat)   # shape (f*prod(n), L)
+
+    # Diagonal + gather off-diagonal; apply Jacobi preconditioner
+    return (DIAG_A[:, np.newaxis] * S + AP_full[full_idx, :]) * jpre[:, np.newaxis]
+
+
+def bl_cocg_rq_jacobi_mvp_fft(n, f, address, Au_til, DIAG_A, B, tol, itermax):
+    """
+    Block-COCG-RQ with Jacobi preconditioning and FFT-accelerated MVP.
+    Solves A X = B for complex-symmetric block-Toeplitz A.
+
+    Gu et al. 2016, arXiv: Block variants of COCG and COCR methods for solving
+    complex symmetric linear systems with L right-hand sides.
+
+    Parameters
+    ----------
+    n       : array_like [Nx, Ny, Nz]
+    f       : int  (3 for electric dipoles)
+    address : 1-D int array of occupied cuboid addresses
+    Au_til  : ndarray (2Nx,2Ny,2Nz,3,3) – pre-FFT interaction tensor from fft_init
+    DIAG_A  : 1-D complex array (f*N_occ,) – diagonal of A
+    B       : 2-D complex array (f*N_occ, L) – RHS block; columns must be linearly independent
+    tol     : float  convergence tolerance
+    itermax : int    maximum iterations
+
+    Returns
+    -------
+    X        : ndarray (f*N_occ, L) – solution block
+    iter_fin : int   – final iteration count
+    err_fin  : float – final relative residual
+    """
+    L = B.shape[1]
+    jpre = 1.0 / DIAG_A
+    full_idx = _build_scatter_index(address, f)
+
+    B_jpre = B * jpre[:, np.newaxis]
+    B_jpre_norm = np.linalg.norm(B_jpre)
+
+    X = np.zeros_like(B)
+
+    Q, xi = np.linalg.qr(B_jpre, mode='reduced')
+    S = Q
+
+    iter_fin = 0
+    err_fin = float('inf')
 
     for k in range(itermax):
-        
-        P_hat.fill(0)
-        ##--------- FFT accerelation of AS=A*S -----------
-        for l in range(L):
-            Q1[:,l]= DIAG_A*S[:,l]  # diagonal contribution
-            for m in range(num_element_occupy):
-                mm= address[m]
-                P_hat[f*mm:f*(mm+1),l]= S[f*m:f*(m+1),l]
-            P_hat[:,l]= MBT_fft_mvp(n, f, Au_til, P_hat[:,l])
-            for m in range(num_element_occupy):
-                mm= address[m]
-                Q1[f*m:f*(m+1),l]+= P_hat[f*mm:f*(mm+1),l] # non-diagonal contribution
-            AS[:,l]= Q1[:,l]*jpre
-        ##------------------------------------------------
+        AS = _block_mvp(n, f, Au_til, full_idx, DIAG_A, S, jpre)
 
-        alpha= np.linalg.solve(np.dot(np.transpose(S),AS), np.dot(np.transpose(Q),Q))
-        X= X+np.dot(S,np.dot(alpha,xi))
+        alpha = np.linalg.solve(S.T @ AS, Q.T @ Q)
+        X = X + S @ (alpha @ xi)
 
-        Qnew, tau= np.linalg.qr(Q-np.dot(AS,alpha), mode='reduced')
-        xi= np.dot(tau,xi)
-        err= np.linalg.norm(xi)/B_jpre_norm
+        Qnew, tau = np.linalg.qr(Q - AS @ alpha, mode='reduced')
+        xi = tau @ xi
+        err = np.linalg.norm(xi) / B_jpre_norm
         print("iter= {:}, err= {:.4f}".format(k, err))
-        iter_fin= k
-        err_fin= err
-        if err < tol :
+        iter_fin = k
+        err_fin = err
+        if err < tol:
             break
-        beta= np.linalg.solve(np.dot(np.transpose(Q),Q), np.dot(np.transpose(tau),np.dot(np.transpose(Qnew),Qnew)))
-        Q= Qnew
-        S= Q+np.dot(S,beta)
+
+        beta = np.linalg.solve(Q.T @ Q,
+                               tau.T @ (Qnew.T @ Qnew))
+        Q = Qnew
+        S = Q + S @ beta
 
     return X, iter_fin, err_fin
 
 
-def bl_bicgstab_jacobi_mvp_fft(n,f,address,Au_til,DIAG_A,B,tol,itermax):
-    ''' 
-    solving a block matrix equation AX=B for general complex BT matrix A,
-    Block BiCGSTAB [Tadano etal 2009 JSIAM letters]
+def bl_bicgstab_jacobi_mvp_fft(n, f, address, Au_til, DIAG_A, B, tol, itermax):
+    """
+    Block-BiCGSTAB with Jacobi preconditioning and FFT-accelerated MVP.
+    Solves A X = B for general complex block-Toeplitz A.
 
-    *************************** Input parameters *****************************************
-     n=[n1,n2,...,nM]     number of BT_blocks at each level, where M is the number of BT levels. 1D np.array with size M, dtype=int
-     f                    size of final dense f*f matrix (e.g., f=3 for 3*3 matrix)
-     address              array of the cuboid-coordinate index of target volume elements.  
-     Au_til               fourier-transformed MBT projection of MBT matrix, non-diagonal part of the interaction matrix A
-     DIAG_A               diagonal part of the interaction matrix A with size= f*len(address)
-     B                    RHS block matrix with size=(f*len(address),L), column vectors of B must be linearly independent
-     tol                  error tolerance of convergence (typically 1e-3 or 1e-4)
-     itermax              maximum number of iteration
-     fft_object           instance of pyfftw.FFTW object (direction = 'FORWARD') created in the MBT_fft_init
-     ifft_object          instance of pyfftw.FFTW object (direction = 'BACKWARD') created in the MBT_fft_init
-     *************************** Output ***************************************************
-     X                    solution block matrix with size=(f*len(address),L) 
-     iter_fin             number of iterations   
-     err_fin              result vector
-     **************************************************************************************
-    '''
-    num_element_occupy= len(address)
-    num_element_cuboid= np.prod(n)
-    L= B.shape[1] # number of columns of RHS vector
+    Tadano et al. 2009, JSIAM Letters: Block BiCGSTAB.
 
-    jpre= 1/DIAG_A
+    Parameters
+    ----------
+    n       : array_like [Nx, Ny, Nz]
+    f       : int  (3 for electric dipoles)
+    address : 1-D int array of occupied cuboid addresses
+    Au_til  : ndarray (2Nx,2Ny,2Nz,3,3) – pre-FFT interaction tensor from fft_init
+    DIAG_A  : 1-D complex array (f*N_occ,) – diagonal of A
+    B       : 2-D complex array (f*N_occ, L) – RHS block; columns must be linearly independent
+    tol     : float  convergence tolerance
+    itermax : int    maximum iterations
 
-    B_jpre= np.zeros((B.shape[0],B.shape[1]), dtype=np.complex128)
+    Returns
+    -------
+    X        : ndarray (f*N_occ, L) – solution block
+    iter_fin : int   – final iteration count
+    err_fin  : float – final relative residual
+    """
+    L = B.shape[1]
+    jpre = 1.0 / DIAG_A
+    full_idx = _build_scatter_index(address, f)
 
-    for l in range(L):
-        B_jpre[:,l]= jpre*B[:,l]
+    B_jpre = B * jpre[:, np.newaxis]
+    B_jpre_norm = np.linalg.norm(B_jpre)
 
-    B_jpre_norm= np.linalg.norm(B_jpre)
-    X= np.zeros((B.shape[0],L), dtype=np.complex128) # Intial guess of the solution matrix X (zero matrix)
+    X = np.zeros_like(B)
+    R = B_jpre.copy()
+    P = R.copy()
+    R0til = R.copy()
+    R0til_H = R0til.conj().T
 
-    R= B_jpre
-    P= R
-    R0til= R
-    R0til_H= R0til.conj().T
-
-    Q1= np.zeros((B.shape[0],L), dtype=np.complex128)
-    P_hat= np.zeros((f*num_element_cuboid,L), dtype=np.complex128)
-    V= np.zeros((B.shape[0],L), dtype=np.complex128)
-    Z= np.zeros((B.shape[0],L), dtype=np.complex128)
+    iter_fin = 0
+    err_fin = float('inf')
 
     for k in range(itermax):
-                
-        ##--------- FFT accerelation of V=A*P -------------
-        P_hat.fill(0)
-        for l in range(L):
-            Q1[:,l]= DIAG_A*P[:,l]  # diagonal contribution
-            for m in range(num_element_occupy):
-                mm= address[m]
-                P_hat[f*mm:f*(mm+1),l]= P[f*m:f*(m+1),l]
-            P_hat[:,l]= MBT_fft_mvp(n, f, Au_til, P_hat[:,l])
-            for m in range(num_element_occupy):
-                mm= address[m]
-                Q1[f*m:f*(m+1),l]+= P_hat[f*mm:f*(mm+1),l] # non-diagonal contribution
-            V[:,l]= Q1[:,l]*jpre
-        ##-------------------------------------------------
 
-        RV= np.dot(R0til_H,V)
-        alpha= np.linalg.solve(RV,np.dot(R0til_H,R))
-        T= R-np.dot(V,alpha)
+        # V = A * P
+        V = _block_mvp(n, f, Au_til, full_idx, DIAG_A, P, jpre)
 
-        ##--------- FFT accerelation of Z=A*T -------------
-        P_hat.fill(0)
-        for l in range(L):
-            Q1[:,l]= DIAG_A*T[:,l]  # diagonal contribution
-            for m in range(num_element_occupy):
-                mm= address[m]
-                P_hat[f*mm:f*(mm+1),l]= T[f*m:f*(m+1),l]
-            P_hat[:,l]= MBT_fft_mvp(n, f, Au_til, P_hat[:,l])
-            for m in range(num_element_occupy):
-                mm= address[m]
-                Q1[f*m:f*(m+1),l]+= P_hat[f*mm:f*(mm+1),l] # non-diagonal contribution
-            Z[:,l]= Q1[:,l]*jpre
-        ##-------------------------------------------------
+        RV = R0til_H @ V
+        alpha = np.linalg.solve(RV, R0til_H @ R)
+        T = R - V @ alpha
 
-        qsi= np.dot(Z.conj().T,T).trace()/np.dot(Z.conj().T,Z).trace()
-        X= X+np.dot(P,alpha)+qsi*T
-        R= T-qsi*Z
+        # Z = A * T
+        Z = _block_mvp(n, f, Au_til, full_idx, DIAG_A, T, jpre)
 
-        err= np.linalg.norm(R)/B_jpre_norm
+        qsi = np.trace(Z.conj().T @ T) / np.trace(Z.conj().T @ Z)
+        X = X + P @ alpha + qsi * T
+        R = T - qsi * Z
+
+        err = np.linalg.norm(R) / B_jpre_norm
         print("iter= {:}, err= {:.4f}".format(k, err))
-        iter_fin= k
-        err_fin= err
-        if err < tol :
+        iter_fin = k
+        err_fin = err
+        if err < tol:
             break
 
-        beta= np.linalg.solve(RV,np.dot(-R0til_H,Z))
-        P= R+ np.dot((P-qsi*V),beta)
+        beta = np.linalg.solve(RV, (-R0til_H @ Z))
+        P = R + (P - qsi * V) @ beta
 
     return X, iter_fin, err_fin

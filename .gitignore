@@ -10,6 +10,7 @@ __pycache__/
 
 # Claude-specific files
 .claude/
+CLAUDE.md
 
 # Generated plot outputs
 *.jpg

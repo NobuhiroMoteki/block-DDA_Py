@@ -30,6 +30,12 @@ I'll remove these limitations upon user requests and application needs.
 
 ---
 
+## 📄 Technical Note
+
+For a detailed description of the theory and algorithms, see [docs/theory_note.pdf](docs/theory_note.pdf).
+
+---
+
 ## 🚀 Installation
 
 block-DDA_Py is developed and tested with **Python 3.13 on Linux (WSL2)**.

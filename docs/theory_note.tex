@@ -1,0 +1,875 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{physics}
+\usepackage{bm}
+\usepackage{siunitx}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage[margin=25mm]{geometry}
+\usepackage{hyperref}
+
+\title{Technical Note: block-DDA\_Py\\[4pt]
+\large Discrete Dipole Approximation with FFT-accelerated\\
+Block-Krylov Solver for Light Scattering by Arbitrary Particles}
+\author{N.\ Moteki}
+\date{Last updated: 2026-03-19 (corresponds to block-DDA\_Py v0.3.0)}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+%======================================================================
+\section{Introduction}
+\label{sec:introduction}
+%======================================================================
+
+The discrete dipole approximation (DDA) is a flexible numerical method for
+computing electromagnetic scattering and absorption by particles of arbitrary
+shape and composition~\cite{Purcell1973,Draine1988}.
+The target particle is represented by an array of $N$ point dipoles on a cubic
+lattice with spacing~$d$.  Each dipole acquires a polarisation in response to
+the local electric field, which consists of the incident wave plus the fields
+radiated by all other dipoles.
+
+This document describes the theoretical background and the algorithms
+that are implemented in version~0.3.0 of
+\texttt{block-DDA\_Py}, covering:
+\begin{enumerate}
+  \item the DDA formulation and polarisability prescription
+        (Sec.~\ref{sec:dda-formulation}),
+  \item the Goodman~(1991) FFT-accelerated matrix--vector product
+        (Sec.~\ref{sec:goodman-fft}),
+  \item the block-Krylov iterative solvers
+        (Sec.~\ref{sec:block-krylov}),
+  \item the scattering observables computed from the solution
+        (Sec.~\ref{sec:observables}),
+  \item the Gaussian Random Ellipsoid (GRE) shape model
+        (Sec.~\ref{sec:gre}),
+  \item the Mie theory reference solution for homogeneous spheres
+        (Sec.~\ref{sec:mie}).
+\end{enumerate}
+
+Throughout this note, the electromagnetic equations are written in
+Gaussian (CGS) units; lengths are expressed in micrometers (\si{\micro\metre}).
+Vectors are set in bold italic ($\bm{E}$, $\bm{k}$, $\bm{r}$),
+matrices and second-rank tensors in upright bold ($\mathbf{A}$,
+$\boldsymbol{\alpha}$), and unit vectors carry a hat
+($\hat{\bm{e}}$, $\hat{\bm{r}}$).
+
+%======================================================================
+\section{DDA Formulation}
+\label{sec:dda-formulation}
+%======================================================================
+
+%----------------------------------------------------------------------
+\subsection{Fundamental equation}
+\label{sec:fundamental-eq}
+%----------------------------------------------------------------------
+
+Consider a monochromatic plane wave of vacuum wavelength $\lambda_0$ incident
+on a particle embedded in a non-absorbing medium of refractive index~$m_m$.
+The wavenumber in the medium is
+\begin{equation}
+  k = \frac{2\pi\, m_m}{\lambda_0}.
+  \label{eq:wavenumber}
+\end{equation}
+
+The particle is discretised into $N$ cubic elements (dipoles) of side
+length~$d$ and volume $v = d^3$, placed on a regular lattice with grid
+dimensions $N_x \times N_y \times N_z$.
+The lattice position of the $i$-th dipole is $\bm{r}_i$.
+
+The polarisation $\bm{P}_i$ of dipole~$i$ satisfies
+\begin{equation}
+  \bm{P}_i = \boldsymbol{\alpha}_i \cdot \bm{E}(\bm{r}_i),
+  \label{eq:polarisation}
+\end{equation}
+where $\boldsymbol{\alpha}_i$ is the $3\times 3$ polarisability tensor and
+$\bm{E}(\bm{r}_i)$ is the total electric field at position~$\bm{r}_i$.
+The total field is the superposition of the incident field and the
+contributions from all other dipoles:
+\begin{equation}
+  \bm{E}(\bm{r}_i)
+    = \bm{E}_{\text{inc},i}
+      - \sum_{j \neq i} \mathbf{G}(\bm{r}_i - \bm{r}_j) \cdot \bm{P}_j,
+  \label{eq:total-field}
+\end{equation}
+where $\mathbf{G}$ is the free-space dyadic Green's function
+(Sec.~\ref{sec:green-tensor}).
+Substituting \eqref{eq:total-field} into \eqref{eq:polarisation} and
+rearranging yields the $3N \times 3N$ linear system
+\begin{equation}
+  \mathbf{A} \, \bm{P} = \bm{E}_{\text{inc}},
+  \label{eq:dda-system}
+\end{equation}
+where $\bm{P}$ and $\bm{E}_{\text{inc}}$ are column vectors of length~$3N$
+formed by concatenating the three Cartesian components of each dipole
+(ordering: $P_{x,0}, P_{y,0}, P_{z,0}, P_{x,1}, \ldots$),
+and $\mathbf{A}$ is a complex-valued matrix with
+\begin{equation}
+  \mathbf{A}_{ij} =
+  \begin{cases}
+    \boldsymbol{\alpha}_i^{-1}         & \text{if } i = j, \\[4pt]
+    \mathbf{G}(\bm{r}_i - \bm{r}_j)   & \text{if } i \neq j.
+  \end{cases}
+  \label{eq:A-matrix}
+\end{equation}
+
+When the dipoles are placed on a regular cubic lattice, the off-diagonal
+blocks $\mathbf{A}_{ij}$ depend only on the difference $\bm{r}_i - \bm{r}_j$,
+giving $\mathbf{A}$ a block-Toeplitz structure that can be exploited by FFT
+(Sec.~\ref{sec:goodman-fft}).
+
+%----------------------------------------------------------------------
+\subsection{Incident field}
+\label{sec:incident-field}
+%----------------------------------------------------------------------
+
+The incident plane wave in the medium is
+\begin{equation}
+  \bm{E}_{\text{inc},i}
+    = \bm{E}_0 \exp(i \bm{k} \cdot \bm{r}_i - i\omega t),
+  \label{eq:incident-wave}
+\end{equation}
+where $\bm{k} = k\,\hat{\bm{u}}_{\text{inc}}$ with
+$\hat{\bm{u}}_{\text{inc}}$ the propagation direction
+(fixed to $+z$ in the laboratory frame).
+The time-harmonic factor $e^{-i\omega t}$ is suppressed hereafter.
+
+To simulate orientation-averaged scattering, the particle is rotated through
+$L$ orientations parametrised by intrinsic ZYZ Euler angles
+$(\alpha_\ell, \beta_\ell, \gamma_\ell)$, $\ell = 1, \ldots, L$.
+For each orientation, the laboratory-frame vectors are transformed into
+the particle frame via the inverse rotation matrix.
+Batch rotation is performed using \texttt{scipy.spatial.transform.Rotation}.
+
+Following the CAS-v2 (Complex Amplitude Sensing, version~2) beam
+configuration, the incident polarisation is assumed to be left-handed
+circular.
+This setting is hard-coded in the current version (v0.3.0).
+The polarisation vector is:
+\begin{equation}
+  \hat{\bm{e}}_0
+    = \frac{1}{\sqrt{2}}\,\hat{\bm{e}}_\theta
+      + \frac{i}{\sqrt{2}}\,\hat{\bm{e}}_\phi,
+  \label{eq:circular-pol}
+\end{equation}
+where $\hat{\bm{e}}_\theta$ and $\hat{\bm{e}}_\phi$ are the polar and
+azimuthal unit vectors associated with the incident direction.
+
+%----------------------------------------------------------------------
+\subsection{Free-space dyadic Green's function}
+\label{sec:green-tensor}
+%----------------------------------------------------------------------
+
+The $3\times 3$ interaction tensor for two dipoles separated by
+$\bm{r} = \bm{r}_i - \bm{r}_j$ ($r = |\bm{r}|$, $\hat{\bm{r}} = \bm{r}/r$)
+is~\cite{Goodman1991}
+\begin{equation}
+  \mathbf{G}(\bm{r})
+    = \frac{e^{ikr}}{r}
+      \left[
+        k^2 \bigl(\hat{\bm{r}} \otimes \hat{\bm{r}} - \mathbf{I}_3\bigr)
+        + \frac{1 - ikr}{r^2}
+          \bigl(\mathbf{I}_3 - 3\,\hat{\bm{r}} \otimes \hat{\bm{r}}\bigr)
+      \right],
+  \label{eq:green-tensor}
+\end{equation}
+where $\otimes$ denotes the outer (tensor) product and $\mathbf{I}_3$ the
+$3\times 3$ identity matrix.
+The self-interaction ($\bm{r} = \bm{0}$) is excluded from
+$\mathbf{G}$ and handled separately via the diagonal
+$\boldsymbol{\alpha}_i^{-1}$ in \eqref{eq:A-matrix}.
+
+%----------------------------------------------------------------------
+\subsection{Polarisability: Clausius--Mossotti with radiative correction}
+\label{sec:polarisability}
+%----------------------------------------------------------------------
+
+The relative permittivity of the $i$-th dipole along Cartesian axis~$c$
+($c \in \{x, y, z\}$) is
+\begin{equation}
+  \epsilon_{r,c} = \frac{m_{p,c}^2}{m_m^2},
+  \label{eq:eper-r}
+\end{equation}
+where $m_{p,c}$ is the (generally complex) particle refractive index along
+axis~$c$.
+
+The static Clausius--Mossotti (CM) polarisability is
+\begin{equation}
+  \alpha_{0,c}
+    = \frac{3}{4\pi}\,
+      \frac{\epsilon_{r,c} - 1}{\epsilon_{r,c} + 2}\; v,
+  \label{eq:cm-polarisability}
+\end{equation}
+where $v = d^3$ is the dipole volume.
+
+To improve accuracy, the CM polarisability is corrected for radiative
+reaction following Chaumet \& Rahmani~\cite{Chaumet2009}.
+Define the equivalent-volume sphere radius
+\begin{equation}
+  a = \left(\frac{3v}{4\pi}\right)^{\!1/3}
+  \label{eq:equiv-radius-a}
+\end{equation}
+and the correction term
+\begin{equation}
+  M = \frac{8\pi}{3}
+      \bigl[(1 - ika)\,e^{ika} - 1\bigr].
+  \label{eq:M-term}
+\end{equation}
+The dynamical (radiative-reaction corrected) polarisability is then
+\begin{equation}
+  \alpha_c
+    = \frac{\alpha_{0,c}}{1 - M\,\alpha_{0,c}\,/\,v}.
+  \label{eq:rr-polarisability}
+\end{equation}
+
+In general the particle may be optically anisotropic, so
+$\boldsymbol{\alpha}_i = \operatorname{diag}(\alpha_x, \alpha_y, \alpha_z)$.
+For isotropic particles, $m_{p,x} = m_{p,y} = m_{p,z}$ and the
+polarisability reduces to a scalar times $\mathbf{I}_3$.
+
+%======================================================================
+\section{FFT-Accelerated Matrix--Vector Product (Goodman 1991)}
+\label{sec:goodman-fft}
+%======================================================================
+
+Direct evaluation of the matrix--vector product (MVP)
+$\mathbf{A}\,\bm{P}$ requires $O(N^2)$ operations and $O(N^2)$ storage.
+Because the off-diagonal part of $\mathbf{A}$ has block-Toeplitz structure
+on a regular cubic lattice, the MVP can be evaluated via 3D FFT in
+$O(N \log N)$ time with $O(N)$ storage~\cite{Goodman1991}.
+
+%----------------------------------------------------------------------
+\subsection{Interaction tensor on the doubled grid}
+\label{sec:doubled-grid}
+%----------------------------------------------------------------------
+
+The physical cuboid lattice has dimensions $N_x \times N_y \times N_z$.
+The index difference along each axis~$\alpha$ ranges from
+$-(N_\alpha - 1)$ to $+(N_\alpha - 1)$.
+To evaluate the linear convolution as a cyclic convolution via FFT,
+the lattice is extended to $2N_x \times 2N_y \times 2N_z$ with the
+following index mapping.
+
+For each extended-grid index $I_\alpha \in \{0, 1, \ldots, 2N_\alpha - 1\}$,
+the physical integer displacement $\Delta\alpha$ is
+\begin{equation}
+  \Delta\alpha(I_\alpha) =
+  \begin{cases}
+    I_\alpha            & 0 \le I_\alpha \le N_\alpha - 1
+                          \quad\text{(positive displacements)}, \\
+    0                   & I_\alpha = N_\alpha
+                          \quad\text{(Nyquist; zeroed out)}, \\
+    I_\alpha - 2N_\alpha & N_\alpha + 1 \le I_\alpha \le 2N_\alpha - 1
+                          \quad\text{(negative displacements)}.
+  \end{cases}
+  \label{eq:index-mapping}
+\end{equation}
+
+The physical displacement vector at extended-grid index
+$(I_x, I_y, I_z)$ is
+$\bm{r} = d\,(\Delta x,\, \Delta y,\, \Delta z)$,
+and the interaction tensor $\mathbf{G}(\bm{r})$ is computed via
+\eqref{eq:green-tensor}.
+Three special cases are set to zero:
+\begin{itemize}
+  \item self-interaction at the origin:
+        $\mathbf{G}(\bm{0}) = \mathbf{0}$,
+  \item Nyquist positions ($I_\alpha = N_\alpha$ for any~$\alpha$):
+        physically unreachable displacements.
+\end{itemize}
+
+The resulting array has shape
+$(2N_x, 2N_y, 2N_z, 3, 3)$ and dtype \texttt{complex128}.
+
+%----------------------------------------------------------------------
+\subsection{Pre-computation of the FFT}
+\label{sec:fft-precompute}
+%----------------------------------------------------------------------
+
+Before the iterative solver begins, the 3D discrete Fourier transform of
+$\mathbf{G}$ along the spatial axes is computed once:
+\begin{equation}
+  \widetilde{\mathbf{G}}
+    = \mathrm{FFT}_{3\text{D}}\!\bigl[\mathbf{G}\bigr].
+  \label{eq:fft-precompute}
+\end{equation}
+$\widetilde{\mathbf{G}}$ has the same shape
+$(2N_x, 2N_y, 2N_z, 3, 3)$ and is stored in memory throughout the
+simulation.
+It is independent of the incident direction, polarisation, and Krylov
+iteration, so this computation is performed only once per
+$(\lambda_0, m_m)$ pair.
+
+%----------------------------------------------------------------------
+\subsection{Block MVP via FFT convolution}
+\label{sec:fft-mvp}
+%----------------------------------------------------------------------
+
+Given a block of $L$ polarisation vectors stacked as columns in
+$\mathbf{P}_{\text{block}}$ (shape $3N_xN_yN_z \times L$), the
+off-diagonal MVP $\mathbf{A}_{\text{off}} \, \mathbf{P}_{\text{block}}$
+is computed as follows.
+
+\begin{enumerate}
+  \item \textbf{Reshape} $\mathbf{P}_{\text{block}}$ from
+        $(3 N_x N_y N_z,\, L)$ to the 5D physical representation
+        $(N_x, N_y, N_z, 3, L)$.
+  \item \textbf{Zero-pad} to the doubled grid:
+        \begin{equation}
+          \hat{\mathbf{P}}(I_x, I_y, I_z, c, \ell) =
+          \begin{cases}
+            \mathbf{P}(I_x, I_y, I_z, c, \ell)
+              & \text{if } I_\alpha < N_\alpha \;\forall \alpha, \\
+            0 & \text{otherwise}.
+          \end{cases}
+          \label{eq:zero-pad}
+        \end{equation}
+  \item \textbf{Forward 3D FFT} along spatial axes:
+        $\widetilde{\mathbf{P}} = \mathrm{FFT}_{3\text{D}}[\hat{\mathbf{P}}]$.
+  \item \textbf{Pointwise tensor product} in Fourier space:
+        \begin{equation}
+          \widetilde{Y}_{i,\ell}
+            = \sum_{j=1}^{3}
+              \widetilde{G}_{ij}\;\widetilde{P}_{j,\ell}
+          \qquad
+          \text{(at each spatial frequency)},
+          \label{eq:fourier-product}
+        \end{equation}
+        i.e.\ a $3\times 3$ matrix times a $3\times L$ matrix at every
+        grid point.
+  \item \textbf{Inverse 3D FFT}:
+        $\hat{\mathbf{Y}} = \mathrm{FFT}_{3\text{D}}^{-1}[\widetilde{\mathbf{Y}}]$.
+  \item \textbf{Extract} the physical region
+        $\hat{\mathbf{Y}}[{:}N_x,\, {:}N_y,\, {:}N_z,\, :,\, :]$
+        and flatten back to $(3 N_x N_y N_z, L)$.
+\end{enumerate}
+
+The full preconditioned MVP including the diagonal is
+\begin{equation}
+  \mathbf{A}\,\bm{S}
+    = \operatorname{diag}(\mathbf{A})\cdot\bm{S}
+      + \mathbf{A}_{\text{off}}\,\bm{S},
+  \label{eq:full-mvp}
+\end{equation}
+where $\operatorname{diag}(\mathbf{A}) = \boldsymbol{\alpha}^{-1}$ is applied
+element-wise and $\mathbf{A}_{\text{off}}$ is evaluated via the FFT
+procedure above.
+
+%----------------------------------------------------------------------
+\subsection{Computational complexity and memory}
+\label{sec:complexity}
+%----------------------------------------------------------------------
+
+\begin{itemize}
+  \item \textbf{Time}: Each MVP costs $O(N_{\text{cuboid}} \log N_{\text{cuboid}})$
+        where $N_{\text{cuboid}} = N_x N_y N_z$.
+        For the block variant with $L$ right-hand sides, the $L$ columns
+        are processed in a single batched FFT call.
+  \item \textbf{Memory}: The dominant allocations are:
+  \begin{itemize}
+    \item $\widetilde{\mathbf{G}}$:
+          $2N_x \times 2N_y \times 2N_z \times 9$ complex128 entries
+          $= 1152\,N_{\text{cuboid}}$ bytes (static, allocated once);
+    \item padded polarisation arrays (forward and inverse FFT):
+          $2N_x \times 2N_y \times 2N_z \times 3 \times L$ complex128
+          entries each $= 384\,L\,N_{\text{cuboid}}$ bytes (two such arrays
+          at peak).
+  \end{itemize}
+  Peak memory $\approx (1152 + 768\,L)\,N_{\text{cuboid}}$ bytes.
+\end{itemize}
+
+%----------------------------------------------------------------------
+\subsection{Multi-threaded FFT}
+\label{sec:fft-workers}
+%----------------------------------------------------------------------
+
+The 3D FFTs are computed by \texttt{scipy.fft.fftn} with multi-threading.
+The default number of worker threads is
+$\max(1,\; n_{\text{cpu}} - 2)$, leaving two cores free for other
+processes.
+This can be overridden at runtime via the environment variable
+\texttt{DDA\_FFT\_WORKERS}.
+
+%======================================================================
+\section{Block-Krylov Iterative Solvers}
+\label{sec:block-krylov}
+%======================================================================
+
+The DDA system \eqref{eq:dda-system} is solved for $L$ right-hand sides
+simultaneously.
+Stacking the $L$ incident-field vectors as columns of a block matrix
+$\mathbf{B}$ (shape $3N \times L$), the problem becomes
+\begin{equation}
+  \mathbf{A}\,\mathbf{X} = \mathbf{B},
+  \label{eq:block-system}
+\end{equation}
+where $\mathbf{X}$ (shape $3N \times L$) contains the $L$ solution
+vectors.
+
+%----------------------------------------------------------------------
+\subsection{Jacobi preconditioning}
+\label{sec:jacobi}
+%----------------------------------------------------------------------
+
+A left Jacobi (diagonal) preconditioner is applied:
+\begin{equation}
+  \mathbf{M}^{-1} = \operatorname{diag}(\mathbf{A})^{-1}
+                   = \operatorname{diag}(\alpha_{c,i}),
+  \label{eq:jacobi-precond}
+\end{equation}
+so that the preconditioned system becomes
+$\mathbf{M}^{-1}\mathbf{A}\,\mathbf{X} = \mathbf{M}^{-1}\mathbf{B}$.
+
+%----------------------------------------------------------------------
+\subsection{Block-BiCGSTAB}
+\label{sec:bicgstab}
+%----------------------------------------------------------------------
+
+The primary solver is Block-BiCGSTAB~\cite{Tadano2009}, which extends
+the stabilised bi-conjugate gradient method to block systems.
+It is suitable for general (non-symmetric) matrices and is the default
+in \texttt{block-DDA\_Py}.
+
+The algorithm is summarised in Table~\ref{tab:bicgstab}.
+Each iteration requires two block MVPs (lines~1 and~4).
+The default convergence parameters are $\tau = 0.01$ and
+$n_{\max} = 25$.
+
+\begin{table}[htbp]
+  \caption{Block-BiCGSTAB with Jacobi preconditioning
+           (after Tadano et al.~\cite{Tadano2009}).}
+  \label{tab:bicgstab}
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.4}
+  \begin{tabular}{@{}r@{\quad}l@{}}
+    \toprule
+    \multicolumn{2}{@{}l}{\textbf{Input:}
+      $\mathbf{A}$, $\mathbf{B}$ (shape $3N\!\times\!L$),
+      $\mathbf{M}=\operatorname{diag}(\mathbf{A})$,
+      tolerance $\tau$, max iterations $n_{\max}$.} \\
+    \midrule
+    \multicolumn{2}{@{}l}{\textbf{Initialise:}\;
+      $\mathbf{X}_0 = \mathbf{0}$,\;
+      $\mathbf{R}_0 = \mathbf{M}^{-1}\mathbf{B}$,\;
+      $\mathbf{P}_0 = \mathbf{R}_0$,\;
+      $\widetilde{\mathbf{R}}_0 = \mathbf{R}_0$.} \\
+    \midrule
+    \multicolumn{2}{@{}l}{\textbf{For} $n = 0, 1, \ldots, n_{\max}-1$:} \\[2pt]
+    1. & $\mathbf{V}_n
+          = \mathbf{M}^{-1}\mathbf{A}\,\mathbf{P}_n$ \\
+    2. & $\boldsymbol{\alpha}_n
+          = (\widetilde{\mathbf{R}}_0^\mathsf{H}\,\mathbf{V}_n)^{-1}\;
+            \widetilde{\mathbf{R}}_0^\mathsf{H}\,\mathbf{R}_n$ \\
+    3. & $\mathbf{T}_n
+          = \mathbf{R}_n - \mathbf{V}_n\,\boldsymbol{\alpha}_n$ \\
+    4. & $\mathbf{Z}_n
+          = \mathbf{M}^{-1}\mathbf{A}\,\mathbf{T}_n$ \\
+    5. & $\xi_n
+          = \operatorname{tr}(\mathbf{Z}_n^\mathsf{H}\,\mathbf{T}_n)\;/\;
+            \operatorname{tr}(\mathbf{Z}_n^\mathsf{H}\,\mathbf{Z}_n)$ \\
+    6. & $\mathbf{X}_{n+1}
+          = \mathbf{X}_n + \mathbf{P}_n\,\boldsymbol{\alpha}_n
+            + \xi_n\,\mathbf{T}_n$ \\
+    7. & $\mathbf{R}_{n+1}
+          = \mathbf{T}_n - \xi_n\,\mathbf{Z}_n$ \\
+    8. & If $\|\mathbf{R}_{n+1}\| / \|\mathbf{M}^{-1}\mathbf{B}\|
+          < \tau$: stop, return $\mathbf{X}_{n+1}$. \\
+    9. & $\boldsymbol{\beta}_n
+          = (\widetilde{\mathbf{R}}_0^\mathsf{H}\,\mathbf{V}_n)^{-1}\;
+            (-\widetilde{\mathbf{R}}_0^\mathsf{H}\,\mathbf{Z}_n)$ \\
+    10. & $\mathbf{P}_{n+1}
+           = \mathbf{R}_{n+1}
+             + (\mathbf{P}_n - \xi_n\,\mathbf{V}_n)\,
+               \boldsymbol{\beta}_n$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+%----------------------------------------------------------------------
+\subsection{Block-COCG-rq (alternative solver)}
+\label{sec:cocg}
+%----------------------------------------------------------------------
+
+Since the DDA interaction matrix $\mathbf{A}$ is complex symmetric
+($\mathbf{A} = \mathbf{A}^\top$), a solver specialised for this
+structure, Block-COCG-rq~\cite{Gu2016}, is also provided.
+Block-COCG-rq requires only one block MVP per iteration and is
+therefore faster per iteration than Block-BiCGSTAB.
+However, for particles with high refractive index it exhibits
+poorer convergence stability compared to Block-BiCGSTAB.
+To switch the solver, replace the import and function call in
+\texttt{bl\_dda/scatterer.py} (line~3 and line~169):
+change \texttt{bl\_bicgstab\_jacobi\_mvp\_fft} to
+\texttt{bl\_cocg\_rq\_jacobi\_mvp\_fft}.
+Both functions share the same interface.
+
+%======================================================================
+\section{Scattering Observables}
+\label{sec:observables}
+%======================================================================
+
+Once the polarisation $\bm{P}_i$ ($i = 1, \ldots, N$) has been obtained
+for each orientation~$\ell$, the following observables are computed.
+
+%----------------------------------------------------------------------
+\subsection{Absorption and extinction cross sections}
+\label{sec:cross-sections}
+%----------------------------------------------------------------------
+
+The absorption cross section is~\cite{Draine1988}
+\begin{equation}
+  C_{\text{abs}}
+    = 4\pi k \sum_{i=1}^{N}
+      \operatorname{Im}\!\bigl(\bm{P}_i \cdot \bm{E}_i^*\bigr),
+  \label{eq:C-abs}
+\end{equation}
+where $\bm{E}_i$ is the internal electric field at dipole~$i$,
+reconstructed from the polarisation via
+\begin{equation}
+  \bm{E}_i
+    = \frac{4\pi\,\bm{P}_i}{(\epsilon_{r,i} - 1)\,v}.
+  \label{eq:E-from-P}
+\end{equation}
+
+The extinction cross section is
+\begin{equation}
+  C_{\text{ext}}
+    = 4\pi k \sum_{i=1}^{N}
+      \operatorname{Im}\!\bigl(\bm{P}_i \cdot \bm{E}_{\text{inc},i}^*\bigr).
+  \label{eq:C-ext}
+\end{equation}
+
+The corresponding efficiency factors are
+$Q_{\text{abs}} = C_{\text{abs}} / (\pi r_{ve}^2)$ and
+$Q_{\text{ext}} = C_{\text{ext}} / (\pi r_{ve}^2)$,
+where $r_{ve}$ is the volume-equivalent sphere radius:
+\begin{equation}
+  r_{ve} = \left(\frac{3\,N\,v}{4\pi}\right)^{\!1/3}.
+  \label{eq:r-ve}
+\end{equation}
+
+%----------------------------------------------------------------------
+\subsection{Forward scattering amplitude (PCAS)}
+\label{sec:S-fw}
+%----------------------------------------------------------------------
+
+The forward scattering amplitude in the PCAS (Polarimetric Complex
+Amplitude of Scattering) framework is computed from the far-field
+projection of the dipole polarisations.
+
+For the forward scattering direction $\hat{\bm{u}}_{\text{fw}} = +\hat{\bm{z}}$
+in the laboratory frame, define the phase factor for each dipole:
+\begin{equation}
+  e_{\text{fw},i}
+    = \exp\!\bigl(ik\,\hat{\bm{u}}_{\text{fw}} \cdot \bm{r}_i\bigr).
+  \label{eq:e-fw}
+\end{equation}
+
+The $\theta$- and $\phi$-components of the forward scattering amplitude
+correspond to the s- and p-polarisation channels of the CAS-v2
+detector, respectively:
+$S_{\text{fw},\theta}^{\text{PCAS}} \equiv S_s(0)$ and
+$S_{\text{fw},\phi}^{\text{PCAS}} \equiv S_p(0)$.
+They are computed as
+\begin{align}
+  S_{\text{fw},\theta}^{\text{PCAS}}\; [= S_s(0)]
+    &= k^2 \sum_{i=1}^{N}
+       (\bm{P}_i \cdot \hat{\bm{e}}_{\theta,\text{fw}})\;
+       (\sqrt{2}\; e_{\text{fw},i})^*,
+  \label{eq:S-fw-theta} \\
+  S_{\text{fw},\phi}^{\text{PCAS}}\; [= S_p(0)]
+    &= k^2 \sum_{i=1}^{N}
+       (\bm{P}_i \cdot \hat{\bm{e}}_{\phi,\text{fw}})\;
+       (\sqrt{2}\,i\; e_{\text{fw},i})^*,
+  \label{eq:S-fw-phi}
+\end{align}
+where the factors $\sqrt{2}$ and $\sqrt{2}\,i$ arise from the
+circular-polarisation decomposition of the incident field
+\eqref{eq:circular-pol}.
+
+%----------------------------------------------------------------------
+\subsection{Backward scattering amplitude (OCBS)}
+\label{sec:S-bk}
+%----------------------------------------------------------------------
+
+For the exact backward scattering direction
+$\hat{\bm{u}}_{\text{bk}} = -\hat{\bm{z}}$, define the phase factor
+\begin{equation}
+  e_{\text{bk},i}
+    = \exp\!\bigl(ik\,\hat{\bm{u}}_{\text{bk}} \cdot \bm{r}_i\bigr).
+  \label{eq:e-bk}
+\end{equation}
+Let $\hat{\bm{e}}_{\theta,\text{bk}}$ and
+$\hat{\bm{e}}_{\phi,\text{bk}}$ be the polar and azimuthal unit
+vectors associated with the backward direction.
+In the laboratory frame:
+$\hat{\bm{e}}_{\theta,\text{bk}} = -\hat{\bm{x}}$ and
+$\hat{\bm{e}}_{\phi,\text{bk}} = +\hat{\bm{y}}$.
+
+The $\theta$- and $\phi$-components of the backward scattering
+amplitude are
+\begin{align}
+  S_{\text{bk},\theta}^{\text{OCBS}}
+    &= k^2 \sum_{i=1}^{N}
+       (\bm{P}_i \cdot \hat{\bm{e}}_{\theta,\text{bk}})\;
+       (\sqrt{2}\; e_{\text{bk},i})^*,
+  \label{eq:S-bk-theta} \\
+  S_{\text{bk},\phi}^{\text{OCBS}}
+    &= k^2 \sum_{i=1}^{N}
+       (\bm{P}_i \cdot \hat{\bm{e}}_{\phi,\text{bk}})\;
+       (\sqrt{2}\,i\; e_{\text{bk},i})^*,
+  \label{eq:S-bk-phi}
+\end{align}
+where the reference-wave factors $\sqrt{2}$ and $\sqrt{2}\,i$ are the
+same as in the forward case.
+
+The OCBS (Opposite-Circular-Basis Scattering) amplitude is then
+\begin{equation}
+  S_{\text{bk}}^{\text{OCBS}}
+    = \frac{-S_{\text{bk},\theta}^{\text{OCBS}}
+            + S_{\text{bk},\phi}^{\text{OCBS}}}{\sqrt{2}}.
+  \label{eq:S-bk-ocbs}
+\end{equation}
+More precisely, the $\theta$- and $\phi$-components correspond to
+combinations of the Mishchenko amplitude matrix
+elements~\cite{Mishchenko2002}:
+\begin{equation}
+  S_{\text{bk},\theta}^{\text{OCBS}}
+    \equiv S_{11}(\pi) + i\,S_{12}(\pi),
+  \qquad
+  S_{\text{bk},\phi}^{\text{OCBS}}
+    \equiv S_{22}(\pi) - i\,S_{21}(\pi).
+  \label{eq:S-bk-mishchenko}
+\end{equation}
+The backscattering theorem $S_{21}(\pi) = -S_{12}(\pi)$ causes the
+off-diagonal contributions to cancel when the two components are
+combined in \eqref{eq:S-bk-ocbs}, yielding an expression equivalent to
+Eq.~(28) of Moteki and Adachi~\cite{Moteki2024}.
+
+%======================================================================
+\section{Gaussian Random Ellipsoid (GRE) Shape Model}
+\label{sec:gre}
+%======================================================================
+
+The particle shape is generated using the Gaussian Random Ellipsoid
+(GRE) model of Muinonen \& Pieniluoma~\cite{Muinonen2011}.
+
+%----------------------------------------------------------------------
+\subsection{Base ellipsoid}
+\label{sec:base-ellipsoid}
+%----------------------------------------------------------------------
+
+The base ellipsoid is defined by three semi-axes $a \ge b \ge c$ and
+the volume-equivalent radius $r_v$.
+Two axis ratios are specified as input: $b/c$ (\texttt{bc\_ratio}) and
+$a/b$ (\texttt{ab\_ratio}).
+The semi-axis~$c$ is determined by volume conservation:
+\begin{equation}
+  c = \left(\frac{r_v^3}{(a/b)\,(b/c)^2}\right)^{\!1/3},
+  \qquad
+  b = c \cdot (b/c),
+  \qquad
+  a = b \cdot (a/b).
+  \label{eq:semi-axes}
+\end{equation}
+
+%----------------------------------------------------------------------
+\subsection{Surface deformation}
+\label{sec:gre-deformation}
+%----------------------------------------------------------------------
+
+A Gaussian random field~$s(\theta, \phi)$ is sampled on the surface of
+the base ellipsoid with covariance
+\begin{equation}
+  \operatorname{Cov}(s_i, s_j)
+    = \beta^2 \exp\!\left(
+        -\frac{\|\bm{r}_i - \bm{r}_j\|^2}{2\,\ell_c^2}
+      \right),
+  \label{eq:gre-covariance}
+\end{equation}
+where $\beta$ is the standard deviation of the deformation and
+$\ell_c$ is the correlation length, which controls the fineness of
+the surface roughness.
+In the current version (v0.3.0), $\ell_c = 0.3\,c$ is adopted as an
+empirical choice.
+
+The deformed surface position is obtained by displacing each point
+on the base ellipsoid along the outward surface normal
+$\hat{\bm{n}}_0$:
+\begin{equation}
+  \bm{r}_{\text{GRE}}(\theta, \phi)
+    = \bm{r}_{\text{base}}(\theta, \phi)
+      + h_0 \bigl[\exp\!\bigl(s(\theta,\phi)\bigr)
+        - \tfrac{1}{2}\beta^2 - 1\bigr]\;
+      \hat{\bm{n}}_0(\theta, \phi),
+  \label{eq:gre-deformation}
+\end{equation}
+where $h_0 = c^2 / a$ is a length scale and $\hat{\bm{n}}_0$ is the
+unit outward normal to the base ellipsoid.
+
+%----------------------------------------------------------------------
+\subsection{Lattice generation and interior detection}
+\label{sec:interior-detection}
+%----------------------------------------------------------------------
+
+A cubic lattice with spacing
+\begin{equation}
+  d = \frac{1}{75}\,\sqrt{\frac{c}{\SI{0.05}{\micro\metre}}}\;
+      \bigl[(a/b)\,(b/c)\bigr]^{1/5}
+  \label{eq:lattice-spacing}
+\end{equation}
+is generated within the bounding box of the deformed surface.
+Equation~\eqref{eq:lattice-spacing} is an empirical formula
+calibrated so that the number of dipoles per wavelength inside
+the particle,
+\begin{equation}
+  \mathrm{dpl}
+    = \frac{\lambda_0 / \max_c |m_{p,c}|}{d}
+    = \frac{\lambda_{\text{particle,min}}}{d},
+  \label{eq:dpl}
+\end{equation}
+where $m_{p,c}$ ($c \in \{x,y,z\}$) is the complex particle
+refractive index along axis~$c$ (cf.\ Sec.~\ref{sec:polarisability})
+and $\lambda_{\text{particle,min}} = \lambda_0 / \max_c|m_{p,c}|$
+is the shortest wavelength inside the particle,
+falls roughly in the range 14--20 for ellipsoidal dust particles
+with the size range detectable by the current CAS-v2 instrument
+($r_v \approx \SIrange{0.1}{0.5}{\micro\metre}$).
+For other types of particle and wavelengths,
+this formula should be customised to ensure adequate dpl.
+In the current code (v0.3.0), \eqref{eq:lattice-spacing} is
+defined in
+\texttt{shape\_model/gaussian\_ellipsoid.py}, line~68.
+Interior points are identified by a three-axis ray-casting algorithm.
+
+%======================================================================
+\section{Mie Theory Reference}
+\label{sec:mie}
+%======================================================================
+
+For validation, the DDA solution for a volume-equivalent sphere is
+compared to the exact Mie theory~\cite{Bohren1983}.
+
+%----------------------------------------------------------------------
+\subsection{Partial-wave expansion}
+\label{sec:mie-expansion}
+%----------------------------------------------------------------------
+
+For a homogeneous sphere of radius $r_p$, the size parameter is
+$x = k\,r_p = 2\pi\,m_m\,r_p / \lambda_0$ and the relative refractive
+index is $m_r = m_p / m_m$.
+The number of partial-wave terms is
+\begin{equation}
+  n_{\max} = \lfloor |x + 4\,x^{1/3} + 2| \rfloor.
+  \label{eq:nstop}
+\end{equation}
+
+The Mie coefficients $a_n$ and $b_n$ are computed from
+Riccati--Bessel functions $\psi_n$, $\chi_n$, $\xi_n = \psi_n + i\chi_n$
+and the logarithmic derivative $D_n(m_r x)$ via downward
+recurrence~\cite{Bohren1983}.
+
+%----------------------------------------------------------------------
+\subsection{Efficiencies and scattering amplitudes}
+\label{sec:mie-efficiencies}
+%----------------------------------------------------------------------
+
+\begin{align}
+  Q_{\text{ext}} &= \frac{2}{x^2}\sum_{n=1}^{n_{\max}}
+                     (2n+1)\,\operatorname{Re}(a_n + b_n),
+  \label{eq:Q-ext-mie} \\
+  Q_{\text{sca}} &= \frac{2}{x^2}\sum_{n=1}^{n_{\max}}
+                     (2n+1)\,(|a_n|^2 + |b_n|^2),
+  \label{eq:Q-sca-mie} \\
+  Q_{\text{abs}} &= Q_{\text{ext}} - Q_{\text{sca}}.
+  \label{eq:Q-abs-mie}
+\end{align}
+
+The angular scattering amplitudes are~\cite{Bohren1983}
+\begin{align}
+  S_1(\theta)
+    &= \sum_{n=1}^{n_{\max}} \frac{2n+1}{n(n+1)}
+       \bigl(a_n\,\pi_n(\cos\theta) + b_n\,\tau_n(\cos\theta)\bigr),
+  \label{eq:S1-mie} \\
+  S_2(\theta)
+    &= \sum_{n=1}^{n_{\max}} \frac{2n+1}{n(n+1)}
+       \bigl(a_n\,\tau_n(\cos\theta) + b_n\,\pi_n(\cos\theta)\bigr),
+  \label{eq:S2-mie}
+\end{align}
+where $\pi_n$ and $\tau_n$ are the angular functions computed via
+upward recurrence.
+The forward and backward scattering amplitudes used for validation
+are obtained from $S_1$ and $S_2$ at $\theta = 0$ and $\theta = \pi$.
+
+\begin{thebibliography}{99}
+\bibitem{Purcell1973}
+  E.~M.~Purcell and C.~R.~Pennypacker,
+  ``Scattering and absorption of light by nonspherical dielectric grains,''
+  \textit{Astrophys.\ J.} \textbf{186}, 705--714 (1973).
+
+\bibitem{Draine1988}
+  B.~T.~Draine,
+  ``The discrete-dipole approximation and its application to interstellar
+  graphite grains,''
+  \textit{Astrophys.\ J.} \textbf{333}, 848--872 (1988).
+
+\bibitem{Goodman1991}
+  J.~J.~Goodman, B.~T.~Draine, and P.~J.~Flatau,
+  ``Application of fast-Fourier-transform techniques to the discrete-dipole
+  approximation,''
+  \textit{Opt.\ Lett.} \textbf{16}(15), 1198--1200 (1991).
+
+\bibitem{Chaumet2009}
+  P.~C.~Chaumet and A.~Rahmani,
+  ``Coupled-dipole method for magnetic and negative-refraction materials,''
+  \textit{J.\ Quant.\ Spectrosc.\ Radiat.\ Transfer} \textbf{110},
+  22--29 (2009).
+
+\bibitem{Tadano2009}
+  H.~Tadano, T.~Sakurai, and Y.~Kuramashi,
+  ``Block BiCGSTAB($\ell$) for linear systems with multiple right-hand
+  sides,''
+  \textit{JSIAM Lett.} \textbf{1}, 44--47 (2009).
+
+\bibitem{Gu2016}
+  X.-M.~Gu, T.-Z.~Huang, L.~Li, H.-B.~Li, T.~Sogabe, and M.~Clemens,
+  ``Block variants of COCG and COCR methods for solving complex symmetric
+  linear systems with multiple right-hand sides,''
+  arXiv:1611.09813 (2016).
+
+\bibitem{Muinonen2011}
+  K.~Muinonen and T.~Pieniluoma,
+  ``Light scattering by Gaussian random ellipsoid particles: First results
+  with discrete-dipole approximation,''
+  \textit{J.\ Quant.\ Spectrosc.\ Radiat.\ Transfer} \textbf{112},
+  1747--1752 (2011).
+
+\bibitem{Bohren1983}
+  C.~F.~Bohren and D.~R.~Huffman,
+  \textit{Absorption and Scattering of Light by Small Particles}
+  (Wiley, New York, 1983).
+
+\bibitem{Mishchenko2002}
+  M.~I.~Mishchenko, L.~D.~Travis, and A.~A.~Lacis,
+  \textit{Scattering, Absorption, and Emission of Light by Small Particles}
+  (Cambridge University Press, 2002).
+
+\bibitem{Moteki2024}
+  N.~Moteki and K.~Adachi,
+  ``Measuring the polarized complex forward-scattering amplitudes of
+  single particles in unbounded fluid flow: CAS-v2 protocol,''
+  \textit{Opt.\ Express} \textbf{32}(21), 36500--36522 (2024).
+  \url{https://doi.org/10.1364/OE.533776}.
+\end{thebibliography}
+
+\section*{Acknowledgment}
+
+This document was prepared with the assistance of Claude (Anthropic).
+The author assumes full responsibility for the content.
+
+\end{document}

@@ -49,7 +49,7 @@ class gaussian_ellipsoid_shape_model:
     Theoretical formulae from Muinonen & Pieniluoma 2011 JQSRT.
     '''
 
-    def __init__(self, r_v_base, bc_ratio, ab_ratio, beta):
+    def __init__(self, r_v_base, bc_ratio, ab_ratio, beta, wl_0, m_p_xyz, dpl=17):
         '''
         Parameters
         ----------
@@ -57,6 +57,9 @@ class gaussian_ellipsoid_shape_model:
         bc_ratio : float  b/c semi-axis ratio, range [1.0, 7.0]
         ab_ratio : float  a/b semi-axis ratio, range [1.0, 2.0]
         beta     : float  std-dev of Gaussian surface deformation, range [0, 0.3]
+        wl_0     : float  vacuum wavelength [um]
+        m_p_xyz  : array_like, length 3  complex particle refractive index (x, y, z)
+        dpl      : int    dipoles per wavelength inside the particle (default 17)
         '''
         self.r_v_base = r_v_base
         self.bc_ratio = bc_ratio
@@ -64,9 +67,11 @@ class gaussian_ellipsoid_shape_model:
         self.beta     = beta
         self.name     = None
 
+        # Lattice spacing from dpl: d = λ_particle_min / dpl
+        m_p_xyz = np.asarray(m_p_xyz)
+        self.lattice_lf = wl_0 / (np.max(np.abs(m_p_xyz)) * dpl)
+
         c = np.cbrt(self.r_v_base ** 3 / (self.ab_ratio * self.bc_ratio ** 2))
-        self.lattice_lf      = (1 / 75) * np.sqrt(c / 0.05) * (self.ab_ratio * self.bc_ratio) ** (1 / 5)  # default
-        #self.lattice_lf      = (1 / 150) * np.sqrt(c / 0.05) * (self.ab_ratio * self.bc_ratio) ** (1 / 5)
         self.distance_factor = 3 ** 0.5 / 2 * (bc_ratio * ab_ratio * (c / 0.1)) ** (1 / 6)
 
 

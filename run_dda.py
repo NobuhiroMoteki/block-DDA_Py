@@ -18,21 +18,21 @@ def _log(msg: str) -> None:
     print(f"[{datetime.datetime.now():%H:%M:%S}] {msg}")
 
 
-def _build_gre_geometry(r_v_base, bc_ratio, ab_ratio, gre_beta):
+def _build_gre_geometry(r_v_base, bc_ratio, ab_ratio, gre_beta, wl_0, m_p_xyz):
     """Build GRE lattice geometry (deterministic: uses RNG_SEED).
 
-    Returns (name, lattice_n, lattice_lf, grid, is_in, r_ve).
-    Independent of m_p_xyz, wl_0, m_m — called once per shape combination.
+    Returns (name, lattice_n, lattice_lf, grid, is_in).
+    Lattice spacing is set by dpl; depends on wl_0 and m_p_xyz.
     """
     rng = np.random.default_rng(RNG_SEED)
-    gre = gaussian_ellipsoid_shape_model(r_v_base, bc_ratio, ab_ratio, gre_beta)
+    gre = gaussian_ellipsoid_shape_model(r_v_base, bc_ratio, ab_ratio, gre_beta,
+                                         wl_0, m_p_xyz)
     r_pts, _ = gre.compute_r_points_on_GRE(rng)
     _, lattice_n, grid = gre.create_cuboid_lattice_that_encloses_GRE_shape(r_pts)
     dist  = gre.find_nearest_distance_from_the_GRE_surf(grid, r_pts)
     is_in = gre.extract_lattice_address_in_GRE_volume(
         gre.lattice_lf, gre.distance_factor, lattice_n, dist)
-    r_ve = np.cbrt(3.0 * gre.lattice_lf**3 * int(is_in.sum()) / (4 * np.pi))
-    return gre.name, lattice_n, gre.lattice_lf, grid, is_in, r_ve
+    return gre.name, lattice_n, gre.lattice_lf, grid, is_in
 
 
 def _run_dda(target, wl_0, m_m, num_orientations):
@@ -88,11 +88,7 @@ with h5py.File(OUTPUT_FILE, "r+") as h5:
                               enumerate(ab_ratio_list), enumerate(gre_beta_list)):
 
         shape_idx4 = (i_rv, i_bc, i_ab, i_bt)
-
-        # Build GRE geometry once per shape (independent of wl_0, m_m, m_p_xyz)
-        gre_name, lattice_n, lattice_lf, grid, is_in, r_ve = \
-            _build_gre_geometry(r_v_base, bc_ratio, ab_ratio, gre_beta)
-        sd['r_ve'][shape_idx4] = r_ve
+        sd['r_ve'][shape_idx4] = r_v_base
 
         for i_pair, (wl_0, m_m) in enumerate(wl_m_m_pairs):
 
@@ -104,14 +100,17 @@ with h5py.File(OUTPUT_FILE, "r+") as h5:
                     _log(f"Skip: pair={i_pair} m_p={i_mp} shape={shape_idx4} (already computed)")
                     continue
 
+                # Build GRE geometry (lattice spacing depends on wl_0 and m_p_xyz via dpl)
+                gre_name, lattice_n, lattice_lf, grid, is_in = \
+                    _build_gre_geometry(r_v_base, bc_ratio, ab_ratio, gre_beta, wl_0, m_p_xyz)
+
                 print("─" * 64)
                 _log(f"wl_0={wl_0:.4f} μm  m_m={m_m:.4f}  m_p_xyz={m_p_xyz}  |  "
                      f"r_v_base={r_v_base:.3f}  bc={bc_ratio:.1f}  "
                      f"ab={ab_ratio:.1f}  β={gre_beta:.2f}  "
-                     f"r_ve={r_ve:.4f} μm  N_ori={num_orientations}")
+                     f"d={lattice_lf:.5f} μm  N_ori={num_orientations}")
 
-                # Target depends on GRE geometry + m_p_xyz (not wl_0, m_m)
-                target = Target(gre_name, lattice_n, lattice_lf, grid, is_in, m_p_xyz)
+                target = Target(gre_name, lattice_n, lattice_lf, grid, is_in, m_p_xyz, r_v_base)
 
                 try:
                     euler_angles, C_abs, C_ext, S_fw_theta, S_fw_phi, S_bk, _ = \
@@ -123,9 +122,9 @@ with h5py.File(OUTPUT_FILE, "r+") as h5:
                 # Mie reference for volume-equivalent sphere
                 m_p_avg = complex(np.mean(m_p_xyz))
                 _, Q_abs_mie, Q_ext_mie, S_fw_mie, S_bk_mie = \
-                    mie_compute_q_and_s(wl_0, m_m, r_ve, m_p_avg, nang=3)
-                C_abs_mie = Q_abs_mie * np.pi * r_ve**2
-                C_ext_mie = Q_ext_mie * np.pi * r_ve**2
+                    mie_compute_q_and_s(wl_0, m_m, r_v_base, m_p_avg, nang=3)
+                C_abs_mie = Q_abs_mie * np.pi * r_v_base**2
+                C_ext_mie = Q_ext_mie * np.pi * r_v_base**2
 
                 # Write results to HDF5
                 N = slice(None)

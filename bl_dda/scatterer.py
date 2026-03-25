@@ -7,17 +7,25 @@ import time
 
 class Target:
 
-    def __init__(self, shape_name, lattice_n, lattice_lf, lattice_grid_points, lattice_grid_points_is_in_target, m_p_xyz):
+    def __init__(self, shape_name, lattice_n, lattice_lf, lattice_grid_points, lattice_grid_points_is_in_target, m_p_xyz, r_v_base):
         self.shape_name : str = shape_name
         self.lattice_n : np.ndarray[int] = lattice_n
-        self.lattice_lf : np.float64 = lattice_lf
-        self.lattice_grid_points = lattice_grid_points
         self.lattice_grid_points_is_in_target = lattice_grid_points_is_in_target
         self.m_p_xyz = m_p_xyz
+        self._r_v_base = r_v_base
 
         self.lattice_address_in_target = np.where(lattice_grid_points_is_in_target)[0]
-        self.lattice_pos_in_target = lattice_grid_points[self.lattice_address_in_target, :]
         self.num_element_occupy = self.lattice_address_in_target.size
+
+        # Rescale lattice spacing so that N_occ * d_adj³ = V_target exactly.
+        # This keeps Green's function and polarizability mutually consistent.
+        V_target = (4.0 / 3.0) * np.pi * r_v_base ** 3
+        d_adj = np.cbrt(V_target / self.num_element_occupy)
+        scale = d_adj / lattice_lf
+        self.lattice_lf = d_adj
+        self.lattice_grid_points = lattice_grid_points * scale
+
+        self.lattice_pos_in_target = self.lattice_grid_points[self.lattice_address_in_target, :]
         self.element_vol : np.float64 = self.lattice_lf ** 3
 
         # Homogeneous but optionally anisotropic refractive index
@@ -90,7 +98,7 @@ class DiscreteDipoles(Target, IncidentField):
     def __init__(self, target, incidentfield):
         Target.__init__(self, target.shape_name, target.lattice_n, target.lattice_lf,
                         target.lattice_grid_points, target.lattice_grid_points_is_in_target,
-                        target.m_p_xyz)
+                        target.m_p_xyz, target._r_v_base)
         IncidentField.__init__(self, incidentfield.wl_0, incidentfield.m_m,
                                incidentfield.euler_angles)
 

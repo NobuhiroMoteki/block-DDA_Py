@@ -13,7 +13,7 @@
 \large Discrete Dipole Approximation with FFT-accelerated\\
 Block-Krylov Solver for Light Scattering by Arbitrary Particles}
 \author{N.\ Moteki}
-\date{Last updated: 2026-03-19 (corresponds to block-DDA\_Py v0.3.0)}
+\date{Last updated: 2026-03-25 (corresponds to block-DDA\_Py v0.4.0)}
 
 \begin{document}
 \maketitle
@@ -34,7 +34,7 @@ the local electric field, which consists of the incident wave plus the fields
 radiated by all other dipoles.
 
 This document describes the theoretical background and the algorithms
-that are implemented in version~0.3.0 of
+that are implemented in version~0.4.0 of
 \texttt{block-DDA\_Py}, covering:
 \begin{enumerate}
   \item the DDA formulation and polarisability prescription
@@ -148,7 +148,7 @@ Batch rotation is performed using \texttt{scipy.spatial.transform.Rotation}.
 Following the CAS-v2 (Complex Amplitude Sensing, version~2) beam
 configuration, the incident polarisation is assumed to be left-handed
 circular.
-This setting is hard-coded in the current version (v0.3.0).
+This setting is hard-coded in the current version (v0.4.0).
 The polarisation vector is:
 \begin{equation}
   \hat{\bm{e}}_0
@@ -509,6 +509,144 @@ change \texttt{bl\_bicgstab\_jacobi\_mvp\_fft} to
 Both functions share the same interface.
 
 %======================================================================
+\section{Computational Performance: Old vs.\ New Implementation}
+\label{sec:performance}
+%======================================================================
+
+This section compares the computational cost of the previous
+implementation (Barrowes 2001 block-Toeplitz FFT with \texttt{ray}
+multiprocessing) and the current implementation (Goodman 1991 3D FFT
+with NumPy/SciPy broadcasting).
+
+%----------------------------------------------------------------------
+\subsection{MVP complexity}
+\label{sec:mvp-complexity}
+%----------------------------------------------------------------------
+
+Both algorithms compute the off-diagonal matrix--vector product via
+FFT-based circular convolution, and both have the same asymptotic
+complexity per right-hand side (RHS):
+\[
+  T_{\text{MVP}}^{(1)} = O(N \log N),
+\]
+where $N = N_x N_y N_z$ is the total cuboid grid size.  For $L$
+right-hand sides the total floating-point operation count is
+$O(L N \log N)$ in both cases.  The difference lies in execution
+efficiency.
+
+%----------------------------------------------------------------------
+\subsection{Parallelisation overhead}
+\label{sec:parallel-overhead}
+%----------------------------------------------------------------------
+
+\begin{table}[htbp]
+\centering
+\caption{Execution-efficiency comparison (per Krylov iteration =
+  two block MVPs for Block-BiCGSTAB).}
+\label{tab:perf-compare}
+\begin{tabular}{@{}lll@{}}
+\toprule
+  & Old (\texttt{ray}) & New (broadcasting) \\
+\midrule
+Parallelism granularity
+  & Process-level (1 MVP / worker)
+  & Thread-level (FFT + BLAS) \\
+Inter-process communication
+  & Array serialise/deserialise
+  & None (single process) \\
+MVP wall time ($L$ RHS)
+  & $\sim \dfrac{L}{P}\,T_{\text{MVP}} + T_{\text{ray}}$
+  & $\sim \dfrac{L}{W}\,T_{\text{FFT}} \times 2 + T_{\text{matmul}}$ \\
+\texttt{ray} overhead $T_{\text{ray}}$
+  & $\sim$ 10--100\,ms / MVP
+  & 0 \\
+Worker startup
+  & $\sim$ 1--5\,s (pool init)
+  & 0 \\
+Cache efficiency
+  & Low (each worker holds copy)
+  & High (contiguous memory) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Here $P$ is the number of \texttt{ray} workers and $W$ is the number
+of \texttt{scipy.fft} threads (default: $\texttt{cpu\_count} - 2$).
+
+%----------------------------------------------------------------------
+\subsection{Worked example}
+\label{sec:perf-example}
+%----------------------------------------------------------------------
+
+For $N = 30\,000$, $L = 50$, $P = W = 8$, and 10 Krylov iterations
+(20~MVPs):
+
+\begin{table}[htbp]
+\centering
+\caption{Estimated wall-time breakdown.}
+\label{tab:perf-example}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Cost factor & Old (\texttt{ray}) & New (broadcasting) \\
+\midrule
+Effective MVP calls
+  & $20 \times \lceil 50/8 \rceil = 140$
+  & 20 (batched) \\
+\texttt{ray} IPC overhead
+  & $\sim 140 \times 50\,\text{ms} = 7\,\text{s}$
+  & 0 \\
+Estimated speedup
+  & 1$\times$ (baseline)
+  & $\sim$ 3--5$\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The three main sources of speedup, in decreasing order of impact, are:
+\begin{enumerate}
+\item \textbf{Removal of \texttt{ray} IPC overhead.}
+      Array serialisation/deserialisation is eliminated; the effect
+      grows with $N$.
+\item \textbf{Batched FFT.}
+      All $L$ RHS are processed in a single \texttt{scipy.fft} call;
+      the internal thread pool distributes work efficiently.
+\item \textbf{Memory locality.}
+      Contiguous-array access within a single process improves CPU
+      cache hit rates.
+\end{enumerate}
+
+%----------------------------------------------------------------------
+\subsection{Memory comparison}
+\label{sec:memory-compare}
+%----------------------------------------------------------------------
+
+\begin{table}[htbp]
+\centering
+\caption{Peak memory usage.}
+\label{tab:memory-compare}
+\begin{tabular}{@{}lll@{}}
+\toprule
+  & Old (\texttt{ray}) & New (Goodman) \\
+\midrule
+Interaction tensor
+  & Copy per worker: $\sim P \times 1152\,N$\,bytes
+  & Single copy: $1152\,N$\,bytes \\
+Polarisation (during MVP)
+  & 1 RHS / worker
+  & All $L$ RHS: $768\,L\,N$\,bytes \\
+Total peak
+  & $\sim P \times 1152\,N$
+  & $(1152 + 768\,L) \times N$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+For $P = 8$ and moderate $L$, the old implementation uses roughly
+$8\times$ more memory for the interaction tensor alone.
+The new implementation's memory is dominated by the block polarisation
+arrays when $L$ is large.
+
+%======================================================================
 \section{Scattering Observables}
 \label{sec:observables}
 %======================================================================
@@ -697,7 +835,7 @@ the base ellipsoid with covariance
 where $\beta$ is the standard deviation of the deformation and
 $\ell_c$ is the correlation length, which controls the fineness of
 the surface roughness.
-In the current version (v0.3.0), $\ell_c = 0.3\,c$ is adopted as an
+In the current version (v0.4.0), $\ell_c = 0.3\,c$ is adopted as an
 empirical choice.
 
 The deformed surface position is obtained by displacing each point
@@ -719,35 +857,56 @@ unit outward normal to the base ellipsoid.
 \label{sec:interior-detection}
 %----------------------------------------------------------------------
 
-A cubic lattice with spacing
+The lattice spacing is determined by the number of dipoles per
+wavelength inside the particle (dpl):
 \begin{equation}
-  d = \frac{1}{75}\,\sqrt{\frac{c}{\SI{0.05}{\micro\metre}}}\;
-      \bigl[(a/b)\,(b/c)\bigr]^{1/5}
+  d = \frac{\lambda_{\text{particle,min}}}{\mathrm{dpl}}
+    = \frac{\lambda_0}{\max_c |m_{p,c}| \times \mathrm{dpl}},
   \label{eq:lattice-spacing}
-\end{equation}
-is generated within the bounding box of the deformed surface.
-Equation~\eqref{eq:lattice-spacing} is an empirical formula
-calibrated so that the number of dipoles per wavelength inside
-the particle,
-\begin{equation}
-  \mathrm{dpl}
-    = \frac{\lambda_0 / \max_c |m_{p,c}|}{d}
-    = \frac{\lambda_{\text{particle,min}}}{d},
-  \label{eq:dpl}
 \end{equation}
 where $m_{p,c}$ ($c \in \{x,y,z\}$) is the complex particle
 refractive index along axis~$c$ (cf.\ Sec.~\ref{sec:polarisability})
 and $\lambda_{\text{particle,min}} = \lambda_0 / \max_c|m_{p,c}|$
-is the shortest wavelength inside the particle,
-falls roughly in the range 14--20 for ellipsoidal dust particles
-with the size range detectable by the current CAS-v2 instrument
-($r_v \approx \SIrange{0.1}{0.5}{\micro\metre}$).
-For other types of particle and wavelengths,
-this formula should be customised to ensure adequate dpl.
-In the current code (v0.3.0), \eqref{eq:lattice-spacing} is
-defined in
-\texttt{shape\_model/gaussian\_ellipsoid.py}, line~68.
+is the shortest wavelength inside the particle.
+The default value is $\mathrm{dpl} = 17$, which is a typical choice
+for DDA simulations of sub-micrometre particles.
+A cubic lattice with this spacing is generated within the bounding
+box of the deformed surface.
 Interior points are identified by a three-axis ray-casting algorithm.
+
+%----------------------------------------------------------------------
+\subsection{Volume-preserving lattice rescaling}
+\label{sec:volume-rescaling}
+%----------------------------------------------------------------------
+
+Because the GRE surface is discretised onto a cubic lattice, the
+total volume of the $N$ occupied dipoles, $N d^3$, generally differs
+from the target volume $V_{\text{target}} = \tfrac{4}{3}\pi r_{v,\text{base}}^3$
+by a few percent.  When parameter sweeps require exact control of the
+volume-equivalent radius (e.g.\ an equally-spaced $r_{v,\text{base}}$
+grid), this discretisation error is undesirable.
+
+To eliminate it, the lattice spacing is rescaled \emph{after} the
+interior detection step.  Given the number of occupied sites~$N$ and
+the desired $r_{v,\text{base}}$, the adjusted spacing is
+\begin{equation}
+  d_{\text{adj}}
+    = \left(\frac{V_{\text{target}}}{N}\right)^{\!1/3}
+    = \left(\frac{4\pi}{3N}\right)^{\!1/3} r_{v,\text{base}}.
+  \label{eq:d-adj}
+\end{equation}
+All lattice coordinates are then multiplied by the scale factor
+$s = d_{\text{adj}} / d$, and $d_{\text{adj}}$ replaces $d$ in every
+subsequent computation: the Green's function~\eqref{eq:green-tensor},
+the Clausius--Mossotti polarisability~\eqref{eq:cm-polarisability},
+and the radiative correction~\eqref{eq:rr-polarisability}.
+Because both the inter-dipole distances and the dipole volume
+$v = d_{\text{adj}}^3$ change by the same factor, the DDA formulation
+remains self-consistent.
+
+This rescaling is performed in the \texttt{Target} constructor
+(\texttt{bl\_dda/scatterer.py}), which requires \texttt{r\_v\_base}
+as a mandatory argument.
 
 %======================================================================
 \section{Mie Theory Reference}

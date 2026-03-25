@@ -1,4 +1,4 @@
-# block-DDA_Py  [![version](https://img.shields.io/badge/version-v0.3.0-blue)](https://github.com/NobuhiroMoteki/block-DDA_Py/releases)
+# block-DDA_Py  [![version](https://img.shields.io/badge/version-v0.4.0-blue)](https://github.com/NobuhiroMoteki/block-DDA_Py/releases)
 
 ## 📌 Description
 A Python code for the Discrete Dipole Approximation (DDA) using block-Krylov type iterative solvers, with custom features for light-scattering simulations of environmental particles (e.g., mineral dust).
@@ -7,7 +7,7 @@ A Python code for the Discrete Dipole Approximation (DDA) using block-Krylov typ
 1. Supports batch calculations for many particle orientations (or many incident beams).
 2. Supports birefringent particle materials (anisotropic complex refractive index along x, y, z axes).
 3. Supports a parametric irregular shape model suitable for mineral dust particles: Gaussian Random Ellipsoid ([GRE](https://doi.org/10.1016/j.jqsrt.2011.02.013)).
-4. The ratio of the dipole side length to the medium wavelength is automatically set (typically between 14 to 20), depending on size-parameter and shape.
+4. The lattice spacing is set directly from the user-specified **dpl** (dipoles per wavelength inside the particle): `d = λ₀ / (max|m_p| × dpl)`. The default is `dpl=17`. After discretisation, the lattice is rescaled so that the volume-equivalent radius matches `r_v_base` exactly (**volume-preserving lattice rescaling**; see [docs/theory_note.pdf](docs/theory_note.pdf), Sec. 6.2–6.3).
 5. Supports simulation of the key quantities in the Complex Amplitude Sensing version 2 ([CAS-v2](https://doi.org/10.1364/OE.533776)): the polarized complex forward-scattering amplitudes {Re*S*(0°)<sub>*s*</sub>, Im*S*(0°)<sub>*s*</sub>, Re*S*(0°)<sub>*p*</sub>, Im*S*(0°)<sub>*p*</sub>} and the complex backward-scattering amplitude *S*<sub>bak</sub>.
 6. For reference, block-DDA_Py outputs a comparison of the DDA solution to the Mie solution for a volume-equivalent sphere with axes-average refractive index.
 7. Supports parameter sweeps over vacuum wavelength, medium refractive index, particle refractive index (including anisotropic cases), and shape parameters, with results stored in HDF5 format.
@@ -90,6 +90,8 @@ uv pip install -r requirements.txt
 ---
 
 ## ⚡ Performance
+
+For a detailed comparison of computational cost between the old (Barrowes + ray) and new (Goodman + NumPy broadcasting) implementations, see [docs/theory_note.pdf](docs/theory_note.pdf), Sec. 5.
 
 ### Multi-core CPU parallelism
 

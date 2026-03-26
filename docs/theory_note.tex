@@ -13,7 +13,7 @@
 \large Discrete Dipole Approximation with FFT-accelerated\\
 Block-Krylov Solver for Light Scattering by Arbitrary Particles}
 \author{N.\ Moteki}
-\date{Last updated: 2026-03-26 (corresponds to block-DDA\_Py v0.5.0)}
+\date{Last updated: 2026-03-26 (corresponds to block-DDA\_Py v0.6.0)}
 
 \begin{document}
 \maketitle
@@ -139,8 +139,15 @@ $\hat{\bm{u}}_{\text{inc}}$ the propagation direction
 The time-harmonic factor $e^{-i\omega t}$ is suppressed hereafter.
 
 To simulate orientation-averaged scattering, the particle is rotated through
-$L$ orientations parametrised by intrinsic ZYZ Euler angles
-$(\alpha_\ell, \beta_\ell, \gamma_\ell)$, $\ell = 1, \ldots, L$.
+$L = N_\alpha \times N_\beta \times N_\gamma$ orientations on a
+deterministic grid of intrinsic ZYZ Euler angles:
+\begin{itemize}
+  \item $\alpha$: $N_\alpha$ equally spaced values in $[0, 2\pi)$,
+  \item $\beta$: $N_\beta$ values chosen so that $\cos\beta$ is equally
+        spaced in $(-1, 1)$ (equal-area midpoints on the sphere),
+  \item $\gamma$: $N_\gamma$ equally spaced values in $[0, 2\pi)$.
+\end{itemize}
+This deterministic scheme avoids sampling noise and ensures reproducibility.
 For each orientation, the laboratory-frame vectors are transformed into
 the particle frame via the inverse rotation matrix.
 Batch rotation is performed using \texttt{scipy.spatial.transform.Rotation}.
@@ -148,7 +155,7 @@ Batch rotation is performed using \texttt{scipy.spatial.transform.Rotation}.
 Following the CAS-v2 (Complex Amplitude Sensing, version~2) beam
 configuration, the incident polarisation is assumed to be left-handed
 circular.
-This setting is hard-coded in the current version (v0.5.0).
+This setting is hard-coded in the current version (v0.6.0).
 The polarisation vector is:
 \begin{equation}
   \hat{\bm{e}}_0
@@ -835,7 +842,7 @@ the base ellipsoid with covariance
 where $\beta$ is the standard deviation of the deformation and
 $\ell_c$ is the correlation length, which controls the fineness of
 the surface roughness.
-In the current version (v0.5.0), $\ell_c = 0.3\,c$ is adopted as an
+In the current version (v0.6.0), $\ell_c = 0.3\,c$ is adopted as an
 empirical choice.
 
 The deformed surface position is obtained by displacing each point

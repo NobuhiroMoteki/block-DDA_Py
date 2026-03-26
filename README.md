@@ -1,10 +1,10 @@
-# block-DDA_Py  [![version](https://img.shields.io/badge/version-v0.5.0-blue)](https://github.com/NobuhiroMoteki/block-DDA_Py/releases)
+# block-DDA_Py  [![version](https://img.shields.io/badge/version-v0.6.0-blue)](https://github.com/NobuhiroMoteki/block-DDA_Py/releases)
 
 ## 📌 Description
 A Python code for the Discrete Dipole Approximation (DDA) using block-Krylov type iterative solvers, with custom features for light-scattering simulations of environmental particles (e.g., mineral dust).
 
 ### Main Features
-1. Supports batch calculations for many particle orientations (or many incident beams).
+1. Supports batch calculations for many particle orientations using a **deterministic uniform Euler angle grid** on SO(3): `N_alpha` × `N_beta` × `N_gamma` divisions, with equal-area polar sampling (`cos(beta)` equally spaced).
 2. Supports birefringent particle materials (anisotropic complex refractive index along x, y, z axes).
 3. Supports a parametric irregular shape model suitable for mineral dust particles: Gaussian Random Ellipsoid ([GRE](https://doi.org/10.1016/j.jqsrt.2011.02.013)).
 4. The lattice spacing is set directly from the user-specified **dpl** (dipoles per wavelength inside the particle): `d = λ₀ / (max|m_p| × dpl)`. The default is `dpl=17`. After discretisation, the lattice is rescaled so that the volume-equivalent radius matches `r_v_base` exactly (**volume-preserving lattice rescaling**; see [docs/theory_note.pdf](docs/theory_note.pdf), Sec. 6.2–6.3).
@@ -81,10 +81,10 @@ uv pip install -r requirements.txt
    - List of volume-equivalent radii: `r_v_base_list`
    - List of axis ratios: `bc_ratio_list`, `ab_ratio_list`
    - List of GRE roughness parameters: `gre_beta_list`
-   - Number of randomly chosen orientations: `num_orientations`
+   - Orientation grid divisions: `N_alpha_ori`, `N_beta_ori`, `N_gamma_ori`
    - Output filename: `OUTPUT_FILE` in `run_dda.py`
 2. Execute `dda_results/create_h5py.ipynb` to generate the HDF5 output file.
-3. Execute `run_dda.py`. The sweep loops over all combinations of `wl_m_m_pairs`, `m_p_xyz_list`, and shape parameters. GRE geometry is computed once per shape condition and reused across all wavelength/RI combinations.
+3. Execute `run_dda.py`. The sweep loops over all combinations of `wl_m_m_pairs`, `m_p_xyz_list`, and shape parameters. For spheroids (`ab_ratio=1`, `gre_beta=0`), spheroid mode is activated automatically: only `N_beta` DDA solves are performed, and the full orientation grid is filled analytically.
 4. Use `dda_results/check_h5py.ipynb` to inspect the HDF5 file contents and verify results.
 5. Use `plot_dda_results.ipynb` to visualize the parameter-swept DDA results.
 

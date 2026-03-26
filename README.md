@@ -71,7 +71,7 @@ uv pip install -r requirements.txt
    - Vacuum wavelength: `wl_0` (length unit must be consistent with `r_v_base`)
    - Medium refractive index (real): `m_m`
    - Particle refractive index (complex) for each axis: `m_p_x`, `m_p_y`, `m_p_z`
-   - Number of orientations: `num_orientations`
+   - Orientation grid divisions: `N_alpha_ori`, `N_beta_ori`, `N_gamma_ori`
 2. Execute `test_dda.ipynb`. DDA results are compared to the Mie reference.
 
 ### Parameter sweep
@@ -101,7 +101,7 @@ block-DDA_Py achieves multi-core parallelism through two complementary mechanism
 | Layer | Mechanism | How to control |
 |-------|-----------|----------------|
 | **FFT** | `scipy.fft` multi-threaded 3D FFT | `_FFT_WORKERS = max(1, cpu_count − 2)` (auto); override with `DDA_FFT_WORKERS=N python run_dda.py` |
-| **Block-Krylov** | All *L* orientations processed simultaneously in each Krylov iteration via NumPy/SciPy broadcasting and BLAS multi-threading | Controlled by `num_orientations` (= *L*) |
+| **Block-Krylov** | All *L* orientations processed simultaneously in each Krylov iteration via NumPy/SciPy broadcasting and BLAS multi-threading | *L* = `N_alpha × N_beta × N_gamma` (general) or `N_beta` (spheroid mode) |
 
 By default, the FFT uses all available CPU cores minus 2 (to keep the system responsive).
 To dedicate all cores, set:
@@ -139,7 +139,7 @@ The factor 34 = 2 × 17 arises from two steps: (1) the cuboid must span the part
 | 1.0      | 10               | ~240,000           | ~2.4 GB     |
 | 1.0      | 50               | ~240,000           | ~9.4 GB     |
 
-> **Tip**: To fit within available RAM, reduce `num_orientations` (= *L*). For large particles, run separate sweeps with smaller *L* and merge the HDF5 results.
+> **Tip**: To fit within available RAM, reduce the orientation grid divisions (especially `N_beta`). For large particles, run separate sweeps with smaller grids and merge the HDF5 results. In spheroid mode, *L* = `N_beta` only, so memory scales linearly with `N_beta`.
 
 ---
 
@@ -157,7 +157,7 @@ The factor 34 = 2 × 17 arises from two steps: (1) the cuboid must span the part
 |------|-----|-----|
 | Wavelength / medium RI | Single `wl_0` + list of `m_m` | List of `(wl_0, m_m)` pairs: `wl_m_m_pairs` |
 | Particle RI | Single `m_p_xyz` | List of `m_p_xyz`: `m_p_xyz_list` (supports anisotropic sweep) |
-| GRE geometry reuse | Rebuilt for every (wl, m_m, m_p) | Built once per shape; reused across all wavelength/RI combinations |
+| GRE geometry reuse | Rebuilt for every (wl, m_m, m_p) | Rebuilt per (wl_0, m_p_xyz) combination (lattice spacing depends on dpl) |
 | HDF5 dataset shape | `(N_mm, N_rv, N_bc, N_ab, N_bt, N_ori)` | `(N_pairs, N_mp, N_rv, N_bc, N_ab, N_bt, N_ori)` |
 
 ### Dependencies
@@ -169,6 +169,24 @@ The factor 34 = 2 × 17 arises from two steps: (1) the cuboid must span the part
 | `scipy` | Retained — `scipy.fft` (multi-threaded FFT), `scipy.spatial.transform` (batch rotation) |
 | `scikit-learn` | Retained — `KDTree` for lattice neighbor search |
 | `ipympl` | Added — interactive 3D plots in notebooks |
+
+### Lattice spacing (v0.4.0)
+| Item | Old | New |
+|------|-----|-----|
+| Lattice spacing formula | Empirical (shape-only) | dpl-based: `d = λ₀ / (max\|m_p\| × dpl)`, default `dpl=17` |
+| Volume consistency | `ve_radius ≈ r_v_base` (approximate) | `ve_radius == r_v_base` exactly (volume-preserving rescaling) |
+
+### Spheroid mode (v0.5.0)
+- For spheroids (`ab_ratio=1`, `gre_beta=0`), azimuthal orientation average is computed analytically
+- DDA solves only $N_\beta$ orientations; full grid filled via constraint relations
+- Verified at machine precision (~1e-16) in `test_spheroid_symmetry.ipynb`
+
+### Orientation sampling (v0.6.0)
+| Item | Old | New |
+|------|-----|-----|
+| Sampling method | Random (Monte Carlo) | Deterministic uniform grid on SO(3) |
+| User specifies | `num_orientations` (total count) | `N_alpha_ori`, `N_beta_ori`, `N_gamma_ori` (grid divisions) |
+| Polar angle (beta) | `Uniform(0, π)` (biased) | `cos(β)` equally spaced in (−1, 1) (equal-area) |
 
 ### Environment
 - **Python**: 3.12 (Windows) → **3.13 (Linux/WSL2)**

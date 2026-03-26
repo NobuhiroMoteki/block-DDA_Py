@@ -1003,19 +1003,32 @@ When \texttt{run\_dda.py} detects a spheroid
 (\texttt{ab\_ratio == 1} and \texttt{gre\_beta == 0}),
 it activates \emph{spheroid mode}:
 \begin{itemize}
-  \item Only $\beta$ (polar angle) is sampled, with
-        $\cos\beta \sim \mathrm{Uniform}(-1,1)$ for uniform coverage
-        on the sphere; $\alpha = 0$ and $\gamma = 0$ are fixed.
-  \item The phi-averaged $S_s = S_p$ is computed analytically via
-        \eqref{eq:S-phi-avg} using
-        \texttt{compute\_phi\_averaged\_PCAS\_S\_fw()} in
-        \texttt{bl\_dda/scatterer.py}.
-  \item $C_{\mathrm{ext}}$ and $C_{\mathrm{abs}}$ are used directly
-        from the $\alpha = 0$ solution.
+  \item The DDA is solved only for $N_\beta$ orientations at
+        $\alpha = 0$, $\gamma = 0$, with $\cos\beta$ at the
+        $N_\beta$ equal-area midpoints (Sec.~\ref{sec:incident-field}).
+  \item The full $N_\alpha \times N_\beta \times N_\gamma$ orientation
+        grid is then filled analytically using the constraint relations
+        \eqref{eq:Ss-constraint}--\eqref{eq:Sp-constraint}:
+        \[
+          S_s(\alpha_j, \beta_i)
+            = A_i + B_i\,e^{i2\alpha_j}, \qquad
+          S_p(\alpha_j, \beta_i)
+            = A_i - B_i\,e^{i2\alpha_j},
+        \]
+        where $A_i = [S_s(\beta_i,0) + S_p(\beta_i,0)]/2$ and
+        $B_i = [S_s(\beta_i,0) - S_p(\beta_i,0)]/2$.
+  \item For backward scattering, the OCBS amplitude follows the same
+        rotational structure:
+        $S_{\mathrm{bk}}^{\mathrm{OCBS}}(\alpha_j, \beta_i)
+         = S_{\mathrm{bk}}^{\mathrm{OCBS}}(0, \beta_i)\,e^{i2\alpha_j}$.
+  \item $C_{\mathrm{ext}}$ and $C_{\mathrm{abs}}$ are $\alpha$-invariant,
+        so the $\alpha = 0$ values are broadcast to all grid points.
 \end{itemize}
-This reduces the number of independent DDA solves from
-$N_\theta \times N_\phi$ to $N_\theta$, while providing
-\emph{exact} (not approximate) $\alpha$-averaged observables.
+This reduces the number of DDA solves from
+$N_\alpha \times N_\beta \times N_\gamma$ to $N_\beta$, while
+the output grid retains the full
+$N_\alpha \times N_\beta \times N_\gamma$ resolution with
+\emph{exact} (not interpolated) values at every grid point.
 
 \paragraph{Applicability.}
 These relations hold for any particle whose cross-section in the plane

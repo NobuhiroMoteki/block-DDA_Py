@@ -13,7 +13,7 @@
 \large Discrete Dipole Approximation with FFT-accelerated\\
 Block-Krylov Solver for Light Scattering by Arbitrary Particles}
 \author{N.\ Moteki}
-\date{Last updated: 2026-03-25 (corresponds to block-DDA\_Py v0.4.0)}
+\date{Last updated: 2026-03-26 (corresponds to block-DDA\_Py v0.5.0)}
 
 \begin{document}
 \maketitle
@@ -148,7 +148,7 @@ Batch rotation is performed using \texttt{scipy.spatial.transform.Rotation}.
 Following the CAS-v2 (Complex Amplitude Sensing, version~2) beam
 configuration, the incident polarisation is assumed to be left-handed
 circular.
-This setting is hard-coded in the current version (v0.4.0).
+This setting is hard-coded in the current version (v0.5.0).
 The polarisation vector is:
 \begin{equation}
   \hat{\bm{e}}_0
@@ -835,7 +835,7 @@ the base ellipsoid with covariance
 where $\beta$ is the standard deviation of the deformation and
 $\ell_c$ is the correlation length, which controls the fineness of
 the surface roughness.
-In the current version (v0.4.0), $\ell_c = 0.3\,c$ is adopted as an
+In the current version (v0.5.0), $\ell_c = 0.3\,c$ is adopted as an
 empirical choice.
 
 The deformed surface position is obtained by displacing each point
@@ -907,6 +907,115 @@ remains self-consistent.
 This rescaling is performed in the \texttt{Target} constructor
 (\texttt{bl\_dda/scatterer.py}), which requires \texttt{r\_v\_base}
 as a mandatory argument.
+
+%======================================================================
+\section{Spheroid Symmetry and Orientation Averaging}
+\label{sec:spheroid}
+%======================================================================
+
+For spheroids (axially symmetric particles with $a = b$ and GRE roughness
+$\beta_{\mathrm{GRE}} = 0$), the scattering amplitudes possess analytical
+constraint relations that enable significant computational savings in
+multi-orientation calculations.
+
+%----------------------------------------------------------------------
+\subsection{Euler angle mapping}
+\label{sec:spheroid-euler}
+%----------------------------------------------------------------------
+
+The intrinsic ZYZ Euler angles $(\alpha,\beta,\gamma)$ relate to the
+spheroid geometry as follows:
+\begin{itemize}
+  \item $\beta$: polar angle of the symmetry axis
+        (tilt from the laboratory $z$-axis),
+  \item $\alpha$: azimuthal angle of the symmetry axis
+        (rotation of the tilt plane about $z$),
+  \item $\gamma$: rotation about the symmetry axis;
+        irrelevant for a spheroid ($a = b$).
+\end{itemize}
+In the notation of Sec.~\ref{sec:spheroid-constraint},
+$\theta \equiv \beta$ and $\phi \equiv \alpha$.
+
+%----------------------------------------------------------------------
+\subsection{Constraint relations at forward scattering}
+\label{sec:spheroid-constraint}
+%----------------------------------------------------------------------
+
+When the symmetry axis lies in the $xz$-plane ($\alpha = 0$), the
+cross-polarisation elements of the amplitude scattering matrix vanish:
+$S_{12}(\theta,0) = S_{21}(\theta,0) = 0$.
+The forward-scattering amplitudes at arbitrary~$\alpha$ are then
+determined entirely by the two diagonal elements at $\alpha = 0$:
+\begin{align}
+  S_s(\theta,\alpha)
+    &= \frac{S_{11}(\theta,0) + S_{22}(\theta,0)}{2}
+     + \frac{S_{11}(\theta,0) - S_{22}(\theta,0)}{2}\,e^{i2\alpha},
+  \label{eq:Ss-constraint} \\
+  S_p(\theta,\alpha)
+    &= \frac{S_{11}(\theta,0) + S_{22}(\theta,0)}{2}
+     - \frac{S_{11}(\theta,0) - S_{22}(\theta,0)}{2}\,e^{i2\alpha},
+  \label{eq:Sp-constraint}
+\end{align}
+where $S_s \equiv S_{11} + iS_{12}$ and $S_p \equiv S_{22} - iS_{21}$
+are the PCAS observables (Sec.~\ref{sec:S-fw}).
+
+These imply three verifiable symmetries:
+\begin{enumerate}
+  \item \textbf{Trace invariance:}\;
+    $S_s(\alpha) + S_p(\alpha)
+       = S_{11}(\theta,0) + S_{22}(\theta,0) = \text{const}$.
+  \item \textbf{Modulus preservation:}\;
+    $|S_s(\alpha) - S_p(\alpha)|
+       = |S_{11}(\theta,0) - S_{22}(\theta,0)| = \text{const}$.
+  \item \textbf{Cross-symmetry:}\;
+    $S_s(\theta,\,\alpha+\pi/2) = S_p(\theta,\,\alpha)$.
+\end{enumerate}
+These relations are verified numerically at machine precision
+($\sim 10^{-16}$) in \texttt{test\_spheroid\_symmetry.ipynb}.
+
+%----------------------------------------------------------------------
+\subsection{Analytical phi-averaging (labor-saving mode)}
+\label{sec:spheroid-saving}
+%----------------------------------------------------------------------
+
+For orientation-averaged observables, the azimuthal average
+over $\alpha \in [0,2\pi]$ eliminates the oscillatory term
+$e^{i2\alpha}$, yielding
+\begin{equation}
+  \langle S_s(\theta) \rangle_\alpha
+  = \langle S_p(\theta) \rangle_\alpha
+  = \frac{S_{11}(\theta,0) + S_{22}(\theta,0)}{2}.
+  \label{eq:S-phi-avg}
+\end{equation}
+Furthermore, $C_{\mathrm{ext}}$ and $C_{\mathrm{abs}}$ are also
+$\alpha$-invariant for a spheroid, so the values computed at
+$\alpha = 0$ are identical to their $\alpha$-averages.
+
+\paragraph{Implementation.}
+When \texttt{run\_dda.py} detects a spheroid
+(\texttt{ab\_ratio == 1} and \texttt{gre\_beta == 0}),
+it activates \emph{spheroid mode}:
+\begin{itemize}
+  \item Only $\beta$ (polar angle) is sampled, with
+        $\cos\beta \sim \mathrm{Uniform}(-1,1)$ for uniform coverage
+        on the sphere; $\alpha = 0$ and $\gamma = 0$ are fixed.
+  \item The phi-averaged $S_s = S_p$ is computed analytically via
+        \eqref{eq:S-phi-avg} using
+        \texttt{compute\_phi\_averaged\_PCAS\_S\_fw()} in
+        \texttt{bl\_dda/scatterer.py}.
+  \item $C_{\mathrm{ext}}$ and $C_{\mathrm{abs}}$ are used directly
+        from the $\alpha = 0$ solution.
+\end{itemize}
+This reduces the number of independent DDA solves from
+$N_\theta \times N_\phi$ to $N_\theta$, while providing
+\emph{exact} (not approximate) $\alpha$-averaged observables.
+
+\paragraph{Applicability.}
+These relations hold for any particle whose cross-section in the plane
+perpendicular to the symmetry axis is circular ($a = b$), regardless
+of the axial ratio $b/c$.  They break down for particles lacking a
+continuous rotational symmetry axis (e.g., tri-axial ellipsoids with
+$a \neq b$, or particles with GRE roughness $\beta_{\mathrm{GRE}} > 0$).
 
 %======================================================================
 \section{Mie Theory Reference}

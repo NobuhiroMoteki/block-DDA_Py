@@ -1,4 +1,4 @@
-# block-DDA_Py  [![version](https://img.shields.io/badge/version-v0.4.0-blue)](https://github.com/NobuhiroMoteki/block-DDA_Py/releases)
+# block-DDA_Py  [![version](https://img.shields.io/badge/version-v0.5.0-blue)](https://github.com/NobuhiroMoteki/block-DDA_Py/releases)
 
 ## 📌 Description
 A Python code for the Discrete Dipole Approximation (DDA) using block-Krylov type iterative solvers, with custom features for light-scattering simulations of environmental particles (e.g., mineral dust).
@@ -11,6 +11,7 @@ A Python code for the Discrete Dipole Approximation (DDA) using block-Krylov typ
 5. Supports simulation of the key quantities in the Complex Amplitude Sensing version 2 ([CAS-v2](https://doi.org/10.1364/OE.533776)): the polarized complex forward-scattering amplitudes {Re*S*(0°)<sub>*s*</sub>, Im*S*(0°)<sub>*s*</sub>, Re*S*(0°)<sub>*p*</sub>, Im*S*(0°)<sub>*p*</sub>} and the complex backward-scattering amplitude *S*<sub>bak</sub>.
 6. For reference, block-DDA_Py outputs a comparison of the DDA solution to the Mie solution for a volume-equivalent sphere with axes-average refractive index.
 7. Supports parameter sweeps over vacuum wavelength, medium refractive index, particle refractive index (including anisotropic cases), and shape parameters, with results stored in HDF5 format.
+8. **Spheroid mode**: For spheroids (`ab_ratio=1`, `beta=0`), the azimuthal orientation average is computed analytically from a single DDA solve per polar angle, reducing the required number of solves from $N_\theta \times N_\phi$ to $N_\theta$ (see [docs/theory_note.pdf](docs/theory_note.pdf), Sec. 8).
 
 ### Algorithms
 1. block-DDA_Py uses [block-Krylov methods](https://people.math.ethz.ch/~mhg/pub/delhipap.pdf) for iteratively solving the matrix equation, enabling batch computation for many incident beams simultaneously.

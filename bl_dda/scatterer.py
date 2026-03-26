@@ -234,3 +234,22 @@ class DiscreteDipoles(Target, IncidentField):
         self.S_bk_OCBS_phi   = self.k ** 2 * (P_proj_phi   * np.conj(sqrt2 * 1j * e_bk)).sum(axis=1)
         self.S_bk_OCBS = (-self.S_bk_OCBS_theta + self.S_bk_OCBS_phi) / sqrt2
         return self.S_bk_OCBS
+
+
+    def compute_phi_averaged_PCAS_S_fw(self):
+        """
+        Compute the phi-averaged forward scattering amplitudes for spheroids.
+
+        Requires that compute_PCAS_observable_S_fw() has been called first,
+        and that the orientations were computed with alpha=0, gamma=0.
+
+        For a spheroid (a=b, beta_GRE=0), the analytical phi-average is:
+            <S_s>_phi = <S_p>_phi = (S_s(alpha=0) + S_p(alpha=0)) / 2
+
+        Returns
+        -------
+        S_fw_phi_avg : ndarray, shape (L,), complex128
+            Phi-averaged forward scattering amplitude (same for s and p).
+        """
+        self.S_PCAS_sp_avg = (self.S_fw_PCAS_theta + self.S_fw_PCAS_phi) / 2
+        return self.S_PCAS_sp_avg

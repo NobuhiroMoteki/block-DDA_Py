@@ -35,23 +35,60 @@ def _build_gre_geometry(r_v_base, bc_ratio, ab_ratio, gre_beta, wl_0, m_p_xyz):
     return gre.name, lattice_n, gre.lattice_lf, grid, is_in
 
 
-def _run_dda(target, wl_0, m_m, num_orientations):
-    """Attempt DDA solve up to MAX_TRY times with fresh random orientations.
+def _is_spheroid(ab_ratio, gre_beta):
+    """Detect spheroid condition: a=b (ab_ratio==1) and smooth surface (beta==0)."""
+    return ab_ratio == 1.0 and gre_beta == 0.0
 
-    Euler-angle rng uses RNG_SEED + 1 so orientations are reproducible and
-    identical across all (wl_0, m_m, m_p_xyz) combinations for the same shape.
 
-    Returns (euler_angles, C_abs, C_ext, S_fw_theta, S_fw_phi, S_bk, converged).
+def _generate_euler_angles(num_orientations, spheroid_mode):
+    """Generate Euler angles for DDA orientations.
+
+    Parameters
+    ----------
+    num_orientations : int
+    spheroid_mode    : bool
+        If True, alpha=0 and gamma=0; only beta is sampled.
+
+    Returns
+    -------
+    euler_angles : ndarray, shape (num_orientations, 3)
+        Columns: [alpha, beta, gamma] in radians.
     """
     rng = np.random.default_rng(RNG_SEED + 1)
-    euler_angles = None
 
-    for i_try in range(1, MAX_TRY + 1):
+    if spheroid_mode:
+        # For spheroids, phi-average is analytical; sample only beta (polar angle).
+        # Uniform distribution on sphere: cos(beta) ~ Uniform(-1, 1).
+        cos_beta = rng.uniform(-1, 1, num_orientations)
+        beta = np.arccos(cos_beta)
+        euler_angles = np.column_stack([
+            np.zeros(num_orientations),   # alpha = 0 (phi-average done analytically)
+            beta,
+            np.zeros(num_orientations),   # gamma irrelevant for spheroid (a=b)
+        ])
+    else:
         euler_angles = np.column_stack([
             rng.uniform(0, 2 * np.pi, num_orientations),   # alpha
             rng.uniform(0,     np.pi, num_orientations),   # beta
             rng.uniform(0, 2 * np.pi, num_orientations),   # gamma
         ])
+    return euler_angles
+
+
+def _run_dda(target, wl_0, m_m, num_orientations, spheroid_mode=False):
+    """Attempt DDA solve up to MAX_TRY times with fresh orientations.
+
+    Euler-angle rng uses RNG_SEED + 1 so orientations are reproducible and
+    identical across all (wl_0, m_m, m_p_xyz) combinations for the same shape.
+
+    When spheroid_mode is True, only beta (polar angle) is sampled.
+    The phi-averaged forward scattering amplitudes are computed analytically:
+        <S_s>_phi = <S_p>_phi = (S_fw_theta(alpha=0) + S_fw_phi(alpha=0)) / 2
+
+    Returns (euler_angles, C_abs, C_ext, S_fw_theta, S_fw_phi, S_bk, converged).
+    """
+    for i_try in range(1, MAX_TRY + 1):
+        euler_angles = _generate_euler_angles(num_orientations, spheroid_mode)
         inc = IncidentField(wl_0, m_m, euler_angles)
         dd  = DiscreteDipoles(target, inc)
         dd.set_interaction_matrix()
@@ -89,6 +126,7 @@ with h5py.File(OUTPUT_FILE, "r+") as h5:
 
         shape_idx4 = (i_rv, i_bc, i_ab, i_bt)
         sd['r_ve'][shape_idx4] = r_v_base
+        spheroid_mode = _is_spheroid(ab_ratio, gre_beta)
 
         for i_pair, (wl_0, m_m) in enumerate(wl_m_m_pairs):
 
@@ -105,16 +143,17 @@ with h5py.File(OUTPUT_FILE, "r+") as h5:
                     _build_gre_geometry(r_v_base, bc_ratio, ab_ratio, gre_beta, wl_0, m_p_xyz)
 
                 print("─" * 64)
+                mode_tag = " [spheroid]" if spheroid_mode else ""
                 _log(f"wl_0={wl_0:.4f} μm  m_m={m_m:.4f}  m_p_xyz={m_p_xyz}  |  "
                      f"r_v_base={r_v_base:.3f}  bc={bc_ratio:.1f}  "
                      f"ab={ab_ratio:.1f}  β={gre_beta:.2f}  "
-                     f"d={lattice_lf:.5f} μm  N_ori={num_orientations}")
+                     f"d={lattice_lf:.5f} μm  N_ori={num_orientations}{mode_tag}")
 
                 target = Target(gre_name, lattice_n, lattice_lf, grid, is_in, m_p_xyz, r_v_base)
 
                 try:
                     euler_angles, C_abs, C_ext, S_fw_theta, S_fw_phi, S_bk, _ = \
-                        _run_dda(target, wl_0, m_m, num_orientations)
+                        _run_dda(target, wl_0, m_m, num_orientations, spheroid_mode)
                 except KeyboardInterrupt:
                     _log("Interrupted – file closed cleanly.")
                     raise SystemExit(0)

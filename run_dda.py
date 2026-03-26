@@ -67,9 +67,14 @@ def _generate_euler_angles(num_orientations, spheroid_mode):
             np.zeros(num_orientations),   # gamma irrelevant for spheroid (a=b)
         ])
     else:
+        # Uniform distribution on SO(3):
+        #   alpha ~ Uniform(0, 2pi)
+        #   cos(beta) ~ Uniform(-1, 1)  (uniform on sphere)
+        #   gamma ~ Uniform(0, 2pi)
+        cos_beta = rng.uniform(-1, 1, num_orientations)
         euler_angles = np.column_stack([
             rng.uniform(0, 2 * np.pi, num_orientations),   # alpha
-            rng.uniform(0,     np.pi, num_orientations),   # beta
+            np.arccos(cos_beta),                            # beta
             rng.uniform(0, 2 * np.pi, num_orientations),   # gamma
         ])
     return euler_angles

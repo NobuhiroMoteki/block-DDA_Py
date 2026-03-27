@@ -145,7 +145,15 @@ Conditions: λ₀ = 0.55 μm, max|m_p| = 1.5, dpl = 17, orientation grid *N*<sub
 | 0.5       | ~100,000 | ~61 GB                | ~1.6 GB                |
 | 1.0       | ~800,000 | ~491 GB               | ~13 GB                 |
 
-Spheroid mode reduces both peak memory and computation time by a factor of **1/40** (*N*<sub>β</sub> / *L*<sub>general</sub> = 20 / 800) relative to general mode.
+**Estimated end-to-end computation time** (extrapolated from benchmark with r_v = 0.1 μm, *L* = 50 / 5, single-socket CPU):
+
+| r_v (μm) | N_cuboid | Time (general) | Time (spheroid) |
+|-----------|----------|----------------|-----------------|
+| 0.3       | ~22,000  | ~1 min         | ~2 s            |
+| 0.5       | ~100,000 | ~6 min         | ~9 s            |
+| 1.0       | ~800,000 | ~58 min        | ~1.4 min        |
+
+Spheroid mode reduces both peak memory and computation time by a factor of **1/40** (*L*<sub>spheroid</sub> / *L*<sub>general</sub> = 20 / 800) relative to general mode.
 
 > **Tip**: For general particles, reduce the grid divisions to fit within available RAM. In spheroid mode, memory and time scale with *N*<sub>β</sub> only.
 

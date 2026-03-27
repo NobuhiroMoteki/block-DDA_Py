@@ -145,7 +145,7 @@ Conditions: λ₀ = 0.55 μm, max|m_p| = 1.5, dpl = 17, orientation grid *N*<sub
 | 0.5       | ~100,000 | ~61 GB                | ~1.6 GB                |
 | 1.0       | ~800,000 | ~491 GB               | ~13 GB                 |
 
-**Estimated end-to-end computation time** (extrapolated from benchmark with r_v = 0.1 μm, *L* = 50 / 5, single-socket CPU):
+**Estimated end-to-end computation time** (extrapolated from a smaller benchmark with r_v = 0.1 μm on Intel Core i7-13700H, 14 cores; actual times for large N_cuboid may be longer due to memory-bandwidth limitations, but the general/spheroid ratio remains valid):
 
 | r_v (μm) | N_cuboid | Time (general) | Time (spheroid) |
 |-----------|----------|----------------|-----------------|

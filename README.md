@@ -139,7 +139,7 @@ Conditions: λ₀ = 0.55 μm, max|m_p| = 1.5, dpl = 17, orientation grid *N*<sub
 
 #### Peak memory
 
-| r_v (μm) | N_cuboid | General (*L* = 800) | Spheroid (*L* = 20) |
+| r_v (μm) | N_cuboid | General (800 orientations) | Spheroid (20 orientations) |
 |-----------|----------|---------------------|---------------------|
 | 0.3       | ~22,000  | ~13 GB              | ~0.4 GB             |
 | 0.5       | ~100,000 | ~61 GB              | ~1.6 GB             |
@@ -149,7 +149,7 @@ Conditions: λ₀ = 0.55 μm, max|m_p| = 1.5, dpl = 17, orientation grid *N*<sub
 
 Extrapolated from a smaller benchmark (r_v = 0.1 μm, Intel Core i7-13700H, 14 cores) assuming $T \propto L \times N_\text{cuboid} \log N_\text{cuboid}$.
 
-| r_v (μm) | N_cuboid | General (*L* = 800) | Spheroid (*L* = 20) |
+| r_v (μm) | N_cuboid | General (800 orientations) | Spheroid (20 orientations) |
 |-----------|----------|---------------------|---------------------|
 | 0.3       | ~22,000  | ~1 min              | ~2 s                |
 | 0.5       | ~100,000 | ~6 min              | ~9 s                |

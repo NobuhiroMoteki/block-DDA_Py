@@ -132,18 +132,22 @@ The factor $2 \times \text{dpl}$ arises from two steps: (1) the cuboid must span
 
 Conditions: λ₀ = 0.55 μm, max|m_p| = 1.5, dpl = 17, orientation grid *N*<sub>α</sub> = 40, *N*<sub>β</sub> = 20, *N*<sub>γ</sub> = 1 (total 800 orientations).
 
-- **General mode**: *L* = *N*<sub>α</sub> × *N*<sub>β</sub> × *N*<sub>γ</sub> = 800 (all orientations solved by DDA).
-- **Spheroid mode**: *L* = *N*<sub>β</sub> = 20 (only polar angles solved by DDA; full 40 × 20 grid filled analytically).
+| Mode | DDA solves (*L*) | Description |
+|------|------------------|-------------|
+| General  | 800 (*N*<sub>α</sub> × *N*<sub>β</sub> × *N*<sub>γ</sub>) | All orientations solved by DDA |
+| Spheroid | 20 (*N*<sub>β</sub> only) | Full 40 × 20 grid filled analytically |
 
-Computation time per Krylov iteration scales as $O(L \times N_\text{cuboid} \log N_\text{cuboid})$.
+**Peak memory** = `(1152 + 768 × L) × N_cuboid` bytes. Computation time per Krylov iteration $\propto L \times N_\text{cuboid} \log N_\text{cuboid}$.
 
-| r_v (μm) | N_cuboid | General (*L* = 800) | Spheroid (*L* = 20) | Memory ratio | Time ratio |
-|-----------|----------|---------------------|---------------------|--------------|------------|
-| 0.3       | ~22,000  | ~13 GB              | ~0.4 GB             | 1/37         | 1/40       |
-| 0.5       | ~100,000 | ~61 GB              | ~1.6 GB             | 1/37         | 1/40       |
-| 1.0       | ~800,000 | ~491 GB             | ~13 GB              | 1/37         | 1/40       |
+| r_v (μm) | N_cuboid | Peak memory (general) | Peak memory (spheroid) |
+|-----------|----------|-----------------------|------------------------|
+| 0.3       | ~22,000  | ~13 GB                | ~0.4 GB                |
+| 0.5       | ~100,000 | ~61 GB                | ~1.6 GB                |
+| 1.0       | ~800,000 | ~491 GB               | ~13 GB                 |
 
-> **Tip**: In spheroid mode, both memory and computation time scale with *N*<sub>β</sub> (not *N*<sub>α</sub> × *N*<sub>β</sub> × *N*<sub>γ</sub>). For general particles, reduce the grid divisions to fit within available RAM.
+Spheroid mode reduces both peak memory and computation time by a factor of **1/40** (*N*<sub>β</sub> / *L*<sub>general</sub> = 20 / 800) relative to general mode.
+
+> **Tip**: For general particles, reduce the grid divisions to fit within available RAM. In spheroid mode, memory and time scale with *N*<sub>β</sub> only.
 
 ---
 

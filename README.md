@@ -132,14 +132,16 @@ The factor $2 \times \text{dpl}$ arises from two steps: (1) the cuboid must span
 
 Conditions: λ₀ = 0.55 μm, max|m_p| = 1.5, dpl = 17, orientation grid *N*<sub>α</sub> = 40, *N*<sub>β</sub> = 20, *N*<sub>γ</sub> = 1 (total 800 orientations).
 
-| Mode | DDA solves (*L*) | Description |
-|------|------------------|-------------|
-| General  | 800 (*N*<sub>α</sub> × *N*<sub>β</sub> × *N*<sub>γ</sub>) | All orientations solved by DDA |
-| Spheroid | 20 (*N*<sub>β</sub> only) | Full 40 × 20 grid filled analytically |
+Both modes output 800 orientations. The difference is the number of DDA solves (*L*):
+
+| Mode | DDA solves (*L*) | Output grid | Description |
+|------|------------------|-------------|-------------|
+| General  | 800 | 800 orientations | All orientations solved by DDA |
+| Spheroid | 20  | 800 orientations | Only *N*<sub>β</sub> = 20 solved; remaining filled analytically |
 
 #### Peak memory
 
-| r_v (μm) | N_cuboid | General (800 orientations) | Spheroid (20 orientations) |
+| r_v (μm) | N_cuboid | General (*L* = 800) | Spheroid (*L* = 20) |
 |-----------|----------|---------------------|---------------------|
 | 0.3       | ~22,000  | ~13 GB              | ~0.4 GB             |
 | 0.5       | ~100,000 | ~61 GB              | ~1.6 GB             |
@@ -149,7 +151,7 @@ Conditions: λ₀ = 0.55 μm, max|m_p| = 1.5, dpl = 17, orientation grid *N*<sub
 
 Extrapolated from a smaller benchmark (r_v = 0.1 μm, Intel Core i7-13700H, 14 cores) assuming $T \propto L \times N_\text{cuboid} \log N_\text{cuboid}$.
 
-| r_v (μm) | N_cuboid | General (800 orientations) | Spheroid (20 orientations) |
+| r_v (μm) | N_cuboid | General (*L* = 800) | Spheroid (*L* = 20) |
 |-----------|----------|---------------------|---------------------|
 | 0.3       | ~22,000  | ~1 min              | ~2 s                |
 | 0.5       | ~100,000 | ~6 min              | ~9 s                |

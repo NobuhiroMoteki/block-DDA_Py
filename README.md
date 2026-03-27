@@ -124,20 +124,20 @@ where `N_cuboid = Nx × Ny × Nz` is the total number of cuboid grid cells (incl
 
 The cuboid size scales approximately as:
 
-$$N_\text{cuboid} \approx \left(\frac{34 \times r_v \times m_m}{\lambda_0}\right)^3$$
+$$N_\text{cuboid} \approx \left(\frac{2 \times \text{dpl} \times r_v \times \max|m_p|}{\lambda_0}\right)^3$$
 
-The factor 34 = 2 × 17 arises from two steps: (1) the cuboid must span the particle diameter $2r_v$, and (2) the lattice spacing is set to $d \approx \lambda_\text{medium} / 17 = \lambda_0 / (17 m_m)$ (the ratio of dipole side length to medium wavelength is typically 14–20; 17 is used here as a representative midpoint).
+The factor $2 \times \text{dpl}$ arises from two steps: (1) the cuboid must span the particle diameter $2r_v$, and (2) the lattice spacing is $d = \lambda_0 / (\max|m_p| \times \text{dpl})$ (default `dpl=17`).
 
-#### Practical examples (λ₀ = 0.55 μm, m_m = 1.0)
+#### Practical examples (λ₀ = 0.55 μm, max|m_p| = 1.5, dpl = 17)
 
 | r_v (μm) | L (orientations) | N_cuboid (approx.) | Peak memory |
 |----------|------------------|--------------------|-------------|
-| 0.3      | 10               | ~7,000             | ~70 MB      |
-| 0.3      | 100              | ~7,000             | ~545 MB     |
-| 0.5      | 10               | ~30,000            | ~295 MB     |
-| 0.5      | 100              | ~30,000            | ~2.4 GB     |
-| 1.0      | 10               | ~240,000           | ~2.4 GB     |
-| 1.0      | 50               | ~240,000           | ~9.4 GB     |
+| 0.3      | 10               | ~12,000            | ~120 MB     |
+| 0.3      | 100              | ~12,000            | ~0.9 GB     |
+| 0.5      | 10               | ~55,000            | ~540 MB     |
+| 0.5      | 100              | ~55,000            | ~4.3 GB     |
+| 1.0      | 10               | ~430,000           | ~4.3 GB     |
+| 1.0      | 50               | ~430,000           | ~17 GB      |
 
 > **Tip**: To fit within available RAM, reduce the orientation grid divisions (especially `N_beta`). For large particles, run separate sweeps with smaller grids and merge the HDF5 results. In spheroid mode, *L* = `N_beta` only, so memory scales linearly with `N_beta`.
 

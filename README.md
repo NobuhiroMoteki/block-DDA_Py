@@ -128,18 +128,22 @@ $$N_\text{cuboid} \approx \left(\frac{2 \times \text{dpl} \times r_v \times \max
 
 The factor $2 \times \text{dpl}$ arises from two steps: (1) the cuboid must span the particle diameter $2r_v$, and (2) the lattice spacing is $d = \lambda_0 / (\max|m_p| \times \text{dpl})$ (default `dpl=17`).
 
-#### Practical examples (λ₀ = 0.55 μm, max|m_p| = 1.5, dpl = 17)
+#### Practical examples: general mode vs spheroid mode
 
-| r_v (μm) | L (orientations) | N_cuboid (approx.) | Peak memory |
-|----------|------------------|--------------------|-------------|
-| 0.3      | 10               | ~12,000            | ~120 MB     |
-| 0.3      | 100              | ~12,000            | ~0.9 GB     |
-| 0.5      | 10               | ~55,000            | ~540 MB     |
-| 0.5      | 100              | ~55,000            | ~4.3 GB     |
-| 1.0      | 10               | ~430,000           | ~4.3 GB     |
-| 1.0      | 50               | ~430,000           | ~17 GB      |
+Conditions: λ₀ = 0.55 μm, max|m_p| = 1.5, dpl = 17, total 800 grid points.
 
-> **Tip**: To fit within available RAM, reduce the orientation grid divisions (especially `N_beta`). For large particles, run separate sweeps with smaller grids and merge the HDF5 results. In spheroid mode, *L* = `N_beta` only, so memory scales linearly with `N_beta`.
+- **General mode**: *L* = 800 (all orientations solved).
+- **Spheroid mode**: *L* = *N*<sub>β</sub> = 20 (only polar angles solved; full 40 × 20 grid filled analytically).
+
+Computation time per Krylov iteration scales as $O(L \times N_\text{cuboid} \log N_\text{cuboid})$.
+
+| r_v (μm) | N_cuboid | General (*L* = 800) | Spheroid (*L* = 20) | Memory ratio | Time ratio |
+|-----------|----------|---------------------|---------------------|--------------|------------|
+| 0.3       | ~22,000  | ~13 GB              | ~0.4 GB             | 1/37         | 1/40       |
+| 0.5       | ~100,000 | ~61 GB              | ~1.6 GB             | 1/37         | 1/40       |
+| 1.0       | ~800,000 | ~491 GB             | ~13 GB              | 1/37         | 1/40       |
+
+> **Tip**: In spheroid mode, both memory and computation time scale with *N*<sub>β</sub> (not *N*<sub>α</sub> × *N*<sub>β</sub> × *N*<sub>γ</sub>). For general particles, reduce the grid divisions to fit within available RAM.
 
 ---
 

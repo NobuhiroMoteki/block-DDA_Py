@@ -1037,6 +1037,18 @@ of the axial ratio $b/c$.  They break down for particles lacking a
 continuous rotational symmetry axis (e.g., tri-axial ellipsoids with
 $a \neq b$, or particles with GRE roughness $\beta_{\mathrm{GRE}} > 0$).
 
+\paragraph{Motivation.}
+For spheroids, the $T$-matrix method~\cite{Mishchenko2002} is generally
+far more efficient than DDA.  However, the extended-boundary-condition
+method (EBCM) used to compute the $T$-matrix becomes numerically
+unstable for extreme aspect ratios ($b/c \ll 1$ or $b/c \gg 1$), where
+the surface integrals over highly elongated or flattened geometries lead
+to severe loss of numerical precision~\cite{Mishchenko2002}.  In such
+regimes, DDA with the spheroid-mode optimisation described above provides
+a viable alternative: the computation remains stable regardless of the
+aspect ratio, and the analytical $\alpha$-averaging reduces the cost by
+a factor of $N_\alpha$ relative to the general DDA mode.
+
 %======================================================================
 \section{Mie Theory Reference}
 \label{sec:mie}

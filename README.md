@@ -141,7 +141,7 @@ Both modes output 800 orientations. The difference is the number of DDA solves (
 
 #### Peak memory
 
-| r_v (μm) | N_cuboid | General (*L* = 800) | Spheroid (*L* = 20) |
+| r_v (μm) | N_cuboid | General mode | Spheroid mode |
 |-----------|----------|---------------------|---------------------|
 | 0.3       | ~22,000  | ~13 GB              | ~0.4 GB             |
 | 0.5       | ~100,000 | ~61 GB              | ~1.6 GB             |
@@ -151,7 +151,7 @@ Both modes output 800 orientations. The difference is the number of DDA solves (
 
 Extrapolated from a smaller benchmark (r_v = 0.1 μm, Intel Core i7-13700H, 14 cores) assuming $T \propto L \times N_\text{cuboid} \log N_\text{cuboid}$.
 
-| r_v (μm) | N_cuboid | General (*L* = 800) | Spheroid (*L* = 20) |
+| r_v (μm) | N_cuboid | General mode | Spheroid mode |
 |-----------|----------|---------------------|---------------------|
 | 0.3       | ~22,000  | ~1 min              | ~2 s                |
 | 0.5       | ~100,000 | ~6 min              | ~9 s                |

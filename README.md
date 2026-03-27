@@ -139,17 +139,15 @@ Conditions: λ₀ = 0.55 μm, max|m_p| = 1.5, dpl = 17, orientation grid *N*<sub
 
 #### Peak memory
 
-Peak memory = `(1152 + 768 × L) × N_cuboid` bytes.
-
 | r_v (μm) | N_cuboid | General (*L* = 800) | Spheroid (*L* = 20) |
 |-----------|----------|---------------------|---------------------|
 | 0.3       | ~22,000  | ~13 GB              | ~0.4 GB             |
 | 0.5       | ~100,000 | ~61 GB              | ~1.6 GB             |
 | 1.0       | ~800,000 | ~491 GB             | ~13 GB              |
 
-#### Estimated end-to-end computation time
+#### Computation time
 
-Extrapolated from a smaller benchmark (r_v = 0.1 μm, Intel Core i7-13700H, 14 cores) assuming $T \propto L \times N_\text{cuboid} \log N_\text{cuboid}$. Actual times for large N_cuboid may be longer due to memory-bandwidth limitations, but the general/spheroid ratio remains valid.
+Extrapolated from a smaller benchmark (r_v = 0.1 μm, Intel Core i7-13700H, 14 cores) assuming $T \propto L \times N_\text{cuboid} \log N_\text{cuboid}$.
 
 | r_v (μm) | N_cuboid | General (*L* = 800) | Spheroid (*L* = 20) |
 |-----------|----------|---------------------|---------------------|
@@ -157,11 +155,11 @@ Extrapolated from a smaller benchmark (r_v = 0.1 μm, Intel Core i7-13700H, 14 c
 | 0.5       | ~100,000 | ~6 min              | ~9 s                |
 | 1.0       | ~800,000 | ~58 min             | ~1.4 min            |
 
+Note: actual times for large N_cuboid may be longer due to memory-bandwidth limitations, but the general/spheroid ratio remains valid.
+
 #### Summary
 
 Spheroid mode reduces both peak memory and computation time by a factor of **1/40** (*L*<sub>spheroid</sub> / *L*<sub>general</sub> = 20 / 800).
-
-> **Tip**: For general particles, reduce the grid divisions to fit within available RAM. In spheroid mode, memory and time scale with *N*<sub>β</sub> only.
 
 ---
 

@@ -130,10 +130,10 @@ The factor $2 \times \text{dpl}$ arises from two steps: (1) the cuboid must span
 
 #### Practical examples: general mode vs spheroid mode
 
-Conditions: λ₀ = 0.55 μm, max|m_p| = 1.5, dpl = 17, total 800 grid points.
+Conditions: λ₀ = 0.55 μm, max|m_p| = 1.5, dpl = 17, orientation grid *N*<sub>α</sub> = 40, *N*<sub>β</sub> = 20, *N*<sub>γ</sub> = 1 (total 800 orientations).
 
-- **General mode**: *L* = 800 (all orientations solved).
-- **Spheroid mode**: *L* = *N*<sub>β</sub> = 20 (only polar angles solved; full 40 × 20 grid filled analytically).
+- **General mode**: *L* = *N*<sub>α</sub> × *N*<sub>β</sub> × *N*<sub>γ</sub> = 800 (all orientations solved by DDA).
+- **Spheroid mode**: *L* = *N*<sub>β</sub> = 20 (only polar angles solved by DDA; full 40 × 20 grid filled analytically).
 
 Computation time per Krylov iteration scales as $O(L \times N_\text{cuboid} \log N_\text{cuboid})$.
 

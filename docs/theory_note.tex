@@ -13,7 +13,7 @@
 \large Discrete Dipole Approximation with FFT-accelerated\\
 Block-Krylov Solver for Light Scattering by Arbitrary Particles}
 \author{N.\ Moteki}
-\date{Last updated: 2026-03-28 (corresponds to block-DDA\_Py v0.7.1)}
+\date{Last updated: 2026-03-28 (corresponds to block-DDA\_Py v0.7.2)}
 
 \begin{document}
 \maketitle
@@ -1092,11 +1092,14 @@ isotropic particle refractive index, and
 $\mathrm{AR} = b/c$ is the aspect ratio of the spheroid
 (equal to \texttt{bc\_ratio}; $\mathrm{AR}>1$ oblate, $<1$ prolate).
 
-The vacuum wavelength $\lambda_0$ and medium refractive index $m_m$
-are fixed parameters (stored as HDF5 root attributes, not swept).
-The imaginary refractive index $\operatorname{Im}(m_p)$ is also fixed
-(default~0).  The total number of DDA conditions is
-$N_{D_{ve}} \times N_{\mathrm{RI}} \times N_{\mathrm{AR}}$.
+In addition, a list of $(\lambda_0,\, m_m)$ pairs is specified,
+where $\lambda_0$ is the vacuum wavelength and $m_m$ is the medium
+refractive index.  Each pair defines an independent scattering problem
+stored in its own HDF5 group.  The imaginary refractive index
+$\operatorname{Im}(m_p)$ is fixed (default~0).  The total number of
+DDA conditions is
+$N_\lambda \times N_{D_{ve}} \times N_{\mathrm{RI}} \times N_{\mathrm{AR}}$,
+where $N_\lambda$ is the number of wavelength/medium pairs.
 
 The aspect-ratio grid is equally spaced in $\log_{10}(\mathrm{AR})$
 so that oblate and prolate shapes are sampled symmetrically about the
@@ -1144,11 +1147,12 @@ grid is populated using the analytical constraint relations.
 \label{sec:sweep-hdf5}
 %----------------------------------------------------------------------
 
-Results are stored in \texttt{dda\_results/dda\_results\_spheroid\_sweep.h5}.
-All datasets reside in the HDF5 root group (no subgroups).
+Results are stored in \texttt{dda\_results/dda\_results\_spheroid\_sweep.h5}
+using a multi-wavelength group-based layout.  Shared grid axes reside at
+the HDF5 root level; per-wavelength data is stored in separate groups.
 
 \begin{itemize}
-  \item \textbf{Grid axis arrays} (1D, equidistant):
+  \item \textbf{Shared grid axes} (root level, 1D, equidistant):
 
     \begin{tabular}{@{}llll@{}}
       \toprule
@@ -1167,20 +1171,30 @@ All datasets reside in the HDF5 root group (no subgroups).
       \bottomrule
     \end{tabular}
 
-  \item \textbf{Forward scattering amplitudes}
-        (shape $(N_{D_{ve}}, N_{\mathrm{RI}}, N_{\mathrm{AR}},
-                 N_u, N_\phi)$, dtype float64):
-    \texttt{S\_fw\_theta\_re}, \texttt{S\_fw\_theta\_im},
-    \texttt{S\_fw\_phi\_re}, \texttt{S\_fw\_phi\_im}.
-    Non-converged cells contain NaN.
+  \item \textbf{Per-wavelength groups}
+        (e.g.\ \texttt{wl\_0p453/}, \texttt{wl\_0p638/},
+        \texttt{wl\_0p834/}).
+    Group names encode the wavelength with the decimal point replaced by
+    \texttt{p}.  Each group carries a required attribute \texttt{wl\_0}
+    (float64) storing the exact wavelength.
 
-  \item \textbf{Convergence flag}
-        (shape $(N_{D_{ve}}, N_{\mathrm{RI}}, N_{\mathrm{AR}})$,
-        dtype bool):
-    \texttt{converged}.  \texttt{True} where the DDA solver converged.
+    Each group contains:
+    \begin{itemize}
+      \item \textbf{Forward scattering amplitudes}
+            (shape $(N_{D_{ve}}, N_{\mathrm{RI}}, N_{\mathrm{AR}},
+                     N_u, N_\phi)$, dtype float64):
+        \texttt{S\_fw\_theta\_re}, \texttt{S\_fw\_theta\_im},
+        \texttt{S\_fw\_phi\_re}, \texttt{S\_fw\_phi\_im}.
+        Non-converged cells contain NaN.
+
+      \item \textbf{Convergence flag}
+            (shape $(N_{D_{ve}}, N_{\mathrm{RI}}, N_{\mathrm{AR}})$,
+            dtype bool):
+        \texttt{converged}.
+    \end{itemize}
 
   \item \textbf{Root attributes} (provenance):
-    \texttt{wl\_0}, \texttt{m\_m}, \texttt{m\_imag},
+    \texttt{m\_m}, \texttt{m\_imag},
     \texttt{rng\_seed}, \texttt{solver\_tol},
     \texttt{block\_dda\_version}.
 \end{itemize}

@@ -1,11 +1,12 @@
-"""Spheroid-only DDA parameter sweep.
+"""Spheroid-only DDA parameter sweep (multi-wavelength).
 
-Sweeps over D_ve x RI_real x log10(AR) on a regular grid.
+Sweeps over (wl_0, m_m) pairs x D_ve x RI_real x log10(AR) on a regular grid.
 Orientations: (cos_theta_o_half [0,1], phi_o [0,pi]) — reduced domain.
 Analytical expansion from beta-only DDA solves is applied before writing.
 
 Output HDF5 schema follows .claude/spheroid_h5_schema_spec.md for compatibility
-with the downstream consumer (build_spheroid_lut.py).
+with the downstream consumer (build_spheroid_lut.py).  Each wavelength gets its
+own HDF5 group (e.g. wl_0p453/); shared grid axes live at the root level.
 
 Output: dda_results/dda_results_spheroid_sweep.h5
 """
@@ -21,14 +22,18 @@ from bl_dda.scatterer import Target, IncidentField, DiscreteDipoles
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Settings — edit this section
-# ════════════════════════════════════════════════════════���═════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
 RNG_SEED    = 12345
 MAX_TRY     = 4
 OUTPUT_FILE = "dda_results/dda_results_spheroid_sweep.h5"
 
-# Fixed optical conditions
-WL_0  = 0.8337   # vacuum wavelength [um]
-M_M   = 1.0      # medium refractive index
+# (wavelength [um], medium refractive index) pairs
+MEDIUM_CONDITIONS = [
+    (0.453, 1.0),
+    (0.638, 1.0),
+    (0.834, 1.0),
+]
+
 M_IMAG = 0.0     # imaginary part of particle refractive index (fixed)
 
 # Swept parameters: (min, max, N_grid)  — all grids are equidistant
@@ -44,6 +49,11 @@ N_PHI_O            = 21   # phi_o in [0, pi], equidistant
 
 def _log(msg: str) -> None:
     print(f"[{datetime.datetime.now():%H:%M:%S}] {msg}")
+
+
+def _wl_group_name(wl_0: float) -> str:
+    """Convert wavelength to HDF5 group name: 0.453 -> 'wl_0p453'."""
+    return f"wl_{str(wl_0).replace('.', 'p')}"
 
 
 # ── grid generation ──────────────────────────────────────────────────────────
@@ -151,40 +161,47 @@ def _run_dda_spheroid(target, wl_0, m_m, cos_theta_o_half, phi_o):
 # ── HDF5 file creation ───────────────────────────────────────────────────────
 
 def _create_h5(filepath):
-    """Create output HDF5 file with empty datasets per schema spec."""
+    """Create output HDF5 file with shared grids and per-wavelength groups."""
     shape_5d   = (N_Dve, N_RI, N_AR, N_u_half, N_ph)
     shape_conv = (N_Dve, N_RI, N_AR)
 
     with h5py.File(filepath, "w") as f:
-        # Optional provenance attributes
-        f.attrs['wl_0']              = WL_0
-        f.attrs['m_m']               = M_M
+        # Root-level provenance attributes
+        f.attrs['m_m']               = MEDIUM_CONDITIONS[0][1]
         f.attrs['m_imag']            = M_IMAG
         f.attrs['rng_seed']          = RNG_SEED
         f.attrs['solver_tol']        = 1e-2
-        f.attrs['block_dda_version'] = '0.7.1'
+        f.attrs['block_dda_version'] = '0.7.2'
 
-        # Grid axis arrays
+        # Shared grid axis arrays (at root)
         f.create_dataset("D_ve_grid",              data=D_ve_grid,              dtype=np.float64)
         f.create_dataset("RI_real_grid",            data=RI_real_grid,           dtype=np.float64)
         f.create_dataset("log_AR_grid",             data=log_AR_grid,            dtype=np.float64)
         f.create_dataset("cos_theta_o_half_grid",   data=cos_theta_o_half_grid,  dtype=np.float64)
         f.create_dataset("phi_o_grid",              data=phi_o_grid,             dtype=np.float64)
 
-        # Forward scattering amplitude arrays (NaN-initialised)
-        for name in ("S_fw_theta_re", "S_fw_theta_im",
-                      "S_fw_phi_re",   "S_fw_phi_im"):
-            ds = f.create_dataset(name, shape=shape_5d, dtype=np.float64)
-            ds[:] = np.nan
+        # Per-wavelength groups
+        for wl_0, m_m in MEDIUM_CONDITIONS:
+            grp_name = _wl_group_name(wl_0)
+            grp = f.create_group(grp_name)
+            grp.attrs['wl_0'] = wl_0
+            grp.attrs['m_m']  = m_m
 
-        # Convergence flag (False-initialised)
-        f.create_dataset("converged", shape=shape_conv, dtype=bool,
-                         data=np.zeros(shape_conv, dtype=bool))
+            for name in ("S_fw_theta_re", "S_fw_theta_im",
+                          "S_fw_phi_re",   "S_fw_phi_im"):
+                ds = grp.create_dataset(name, shape=shape_5d, dtype=np.float64)
+                ds[:] = np.nan
+
+            grp.create_dataset("converged", shape=shape_conv, dtype=bool,
+                               data=np.zeros(shape_conv, dtype=bool))
 
     _log(f"Created {filepath}")
+    _log(f"  Wavelengths: {[wl for wl, _ in MEDIUM_CONDITIONS]}")
     _log(f"  Grid: N_Dve={N_Dve}, N_RI={N_RI}, N_AR={N_AR}")
     _log(f"  Orientation: N_cos_theta_o_half={N_u_half}, N_phi_o={N_ph}")
-    _log(f"  Total DDA conditions: {N_Dve * N_RI * N_AR}")
+    n_per_wl = N_Dve * N_RI * N_AR
+    _log(f"  DDA conditions per wavelength: {n_per_wl}  "
+         f"(total: {n_per_wl * len(MEDIUM_CONDITIONS)})")
 
 
 # ── main sweep ───────────────────────────────────────────────────────────────
@@ -193,72 +210,86 @@ if not pathlib.Path(OUTPUT_FILE).exists():
     _create_h5(OUTPUT_FILE)
 
 with h5py.File(OUTPUT_FILE, "r+") as h5:
-    for (i_dve, D_ve), (i_ri, RI_real), (i_ar, bc_ratio) in \
-            itertools.product(
-                enumerate(D_ve_grid),
-                enumerate(RI_real_grid),
-                enumerate(AR_grid)):
+    for wl_0, m_m in MEDIUM_CONDITIONS:
+        grp_name = _wl_group_name(wl_0)
 
-        idx3 = (i_dve, i_ri, i_ar)
+        # Create group if resuming a file that was created before this
+        # wavelength was added
+        if grp_name not in h5:
+            shape_5d   = (N_Dve, N_RI, N_AR, N_u_half, N_ph)
+            shape_conv = (N_Dve, N_RI, N_AR)
+            grp = h5.create_group(grp_name)
+            grp.attrs['wl_0'] = wl_0
+            grp.attrs['m_m']  = m_m
+            for name in ("S_fw_theta_re", "S_fw_theta_im",
+                          "S_fw_phi_re",   "S_fw_phi_im"):
+                ds = grp.create_dataset(name, shape=shape_5d, dtype=np.float64)
+                ds[:] = np.nan
+            grp.create_dataset("converged", shape=shape_conv, dtype=bool,
+                               data=np.zeros(shape_conv, dtype=bool))
 
-        # Skip if already computed (converged flag is True)
-        if h5['converged'][idx3]:
-            _log(f"Skip: Dve={i_dve} RI={i_ri} AR={i_ar} (converged)")
-            continue
+        grp = h5[grp_name]
+        _log(f"── Wavelength {wl_0} um (group: {grp_name}) ──")
 
-        # Skip if NaN-filled but already attempted (check a single element)
-        # Re-attempt only cells that have not been written at all (still NaN
-        # from initialisation AND converged==False means not yet attempted
-        # OR previously failed — both should be re-attempted).
+        for (i_dve, D_ve), (i_ri, RI_real), (i_ar, bc_ratio) in \
+                itertools.product(
+                    enumerate(D_ve_grid),
+                    enumerate(RI_real_grid),
+                    enumerate(AR_grid)):
 
-        r_v_base = D_ve / 2.0
-        m_p = RI_real + 1j * M_IMAG
-        m_p_xyz = np.array([m_p, m_p, m_p])  # isotropic
+            idx3 = (i_dve, i_ri, i_ar)
 
-        # Build geometry
-        print("=" * 64)
-        try:
-            gre_name, lattice_n, lattice_lf, grid, is_in = \
-                _build_spheroid_geometry(r_v_base, bc_ratio, WL_0, m_p_xyz)
-        except (ValueError, IndexError):
-            _log(f"D_ve={D_ve:.4f} um  RI={RI_real:.3f}  "
+            # Skip if already computed (converged flag is True)
+            if grp['converged'][idx3]:
+                continue
+
+            r_v_base = D_ve / 2.0
+            m_p = RI_real + 1j * M_IMAG
+            m_p_xyz = np.array([m_p, m_p, m_p])  # isotropic
+
+            # Build geometry
+            print("=" * 64)
+            try:
+                gre_name, lattice_n, lattice_lf, grid, is_in = \
+                    _build_spheroid_geometry(r_v_base, bc_ratio, wl_0, m_p_xyz)
+            except (ValueError, IndexError):
+                _log(f"[{grp_name}] D_ve={D_ve:.4f} um  RI={RI_real:.3f}  "
+                     f"AR={bc_ratio:.4f} (log={log_AR_grid[i_ar]:.3f})  "
+                     f"-- geometry failed, skipping")
+                continue
+
+            n_occ = int(np.sum(is_in))
+            if n_occ == 0:
+                _log(f"[{grp_name}] D_ve={D_ve:.4f} um  RI={RI_real:.3f}  "
+                     f"AR={bc_ratio:.4f} (log={log_AR_grid[i_ar]:.3f})  "
+                     f"-- no dipoles, skipping")
+                continue
+
+            _log(f"[{grp_name}] D_ve={D_ve:.4f} um  RI={RI_real:.3f}+{M_IMAG:.4f}j  "
                  f"AR={bc_ratio:.4f} (log={log_AR_grid[i_ar]:.3f})  "
-                 f"-- geometry failed (particle too small/extreme AR), skipping")
-            # Leave NaN + converged=False (already initialised)
-            continue
+                 f"d={lattice_lf:.5f} um  N_dip={n_occ}  L_solve={N_u_half}")
 
-        n_occ = int(np.sum(is_in))
-        if n_occ == 0:
-            _log(f"D_ve={D_ve:.4f} um  RI={RI_real:.3f}  "
-                 f"AR={bc_ratio:.4f} (log={log_AR_grid[i_ar]:.3f})  "
-                 f"-- no dipoles inside particle, skipping")
-            continue
+            target = Target(gre_name, lattice_n, lattice_lf,
+                            grid, is_in, m_p_xyz, r_v_base)
 
-        _log(f"D_ve={D_ve:.4f} um  RI={RI_real:.3f}+{M_IMAG:.4f}j  "
-             f"AR={bc_ratio:.4f} (log={log_AR_grid[i_ar]:.3f})  "
-             f"d={lattice_lf:.5f} um  N_dip={n_occ}  L_solve={N_u_half}")
+            try:
+                S_fw_theta, S_fw_phi, converged = \
+                    _run_dda_spheroid(target, wl_0, m_m,
+                                      cos_theta_o_half_grid, phi_o_grid)
+            except KeyboardInterrupt:
+                _log("Interrupted -- file closed cleanly.")
+                raise SystemExit(0)
 
-        target = Target(gre_name, lattice_n, lattice_lf,
-                        grid, is_in, m_p_xyz, r_v_base)
+            # Write results
+            N = slice(None)
+            grp['S_fw_theta_re'][idx3 + (N, N)] = S_fw_theta.real
+            grp['S_fw_theta_im'][idx3 + (N, N)] = S_fw_theta.imag
+            grp['S_fw_phi_re'  ][idx3 + (N, N)] = S_fw_phi.real
+            grp['S_fw_phi_im'  ][idx3 + (N, N)] = S_fw_phi.imag
+            grp['converged'    ][idx3]           = converged
 
-        try:
-            S_fw_theta, S_fw_phi, converged = \
-                _run_dda_spheroid(target, WL_0, M_M,
-                                  cos_theta_o_half_grid, phi_o_grid)
-        except KeyboardInterrupt:
-            _log("Interrupted -- file closed cleanly.")
-            raise SystemExit(0)
-
-        # Write results
-        N = slice(None)
-        h5['S_fw_theta_re'][idx3 + (N, N)] = S_fw_theta.real
-        h5['S_fw_theta_im'][idx3 + (N, N)] = S_fw_theta.imag
-        h5['S_fw_phi_re'  ][idx3 + (N, N)] = S_fw_phi.real
-        h5['S_fw_phi_im'  ][idx3 + (N, N)] = S_fw_phi.imag
-        h5['converged'    ][idx3]           = converged
-
-        _log(f"  converged={converged}  "
-             f"S_fw_t(mean)={np.nanmean(S_fw_theta):.4g}  "
-             f"S_fw_p(mean)={np.nanmean(S_fw_phi):.4g}")
+            _log(f"  converged={converged}  "
+                 f"S_fw_t(mean)={np.nanmean(S_fw_theta):.4g}  "
+                 f"S_fw_p(mean)={np.nanmean(S_fw_phi):.4g}")
 
 _log("All conditions completed.")

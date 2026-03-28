@@ -1,4 +1,4 @@
-# block-DDA_Py  [![version](https://img.shields.io/badge/version-v0.6.0-blue)](https://github.com/NobuhiroMoteki/block-DDA_Py/releases)
+# block-DDA_Py  [![version](https://img.shields.io/badge/version-v0.7.1-blue)](https://github.com/NobuhiroMoteki/block-DDA_Py/releases)
 
 ## 📌 Description
 A Python code for the Discrete Dipole Approximation (DDA) using block-Krylov type iterative solvers, with custom features for light-scattering simulations of environmental particles (e.g., mineral dust).
@@ -87,6 +87,32 @@ uv pip install -r requirements.txt
 3. Execute `run_dda.py`. The sweep loops over all combinations of `wl_m_m_pairs`, `m_p_xyz_list`, and shape parameters. For spheroids (`ab_ratio=1`, `gre_beta=0`), spheroid mode is activated automatically: only `N_beta` DDA solves are performed, and the full orientation grid is filled analytically.
 4. Use `dda_results/check_h5py.ipynb` to inspect the HDF5 file contents and verify results.
 5. Use `plot_dda_results.ipynb` to visualize the parameter-swept DDA results.
+
+### Spheroid parameter sweep (large-scale)
+
+For dedicated spheroid sweeps over a regular grid of physical parameters, use `run_dda_spheroid_sweep.py`.
+
+1. Edit the settings section at the top of the script:
+   - `WL_0`, `M_M`: fixed vacuum wavelength and medium refractive index
+   - `D_VE_RANGE`, `RI_REAL_RANGE`, `LOG10_AR_RANGE`: each `(min, max, N_grid)` — equidistant grids over volume-equivalent diameter, real refractive index, and log10(aspect ratio)
+   - `N_COS_THETA_O_HALF`, `N_PHI_O`: orientation grid sizes on the reduced domain (`cos(theta_o)` in [0, 1], `phi_o` in [0, pi])
+
+2. Execute the script:
+
+   ```sh
+   python run_dda_spheroid_sweep.py
+   ```
+
+   The script creates the HDF5 file `dda_results/dda_results_spheroid_sweep.h5` (if not existing) and runs the sweep. Intermediate results are written per condition, so the run can be interrupted and resumed.
+
+3. See `read_spheroid_sweep_example.py` for how to read results.
+
+**Output HDF5 structure** (`dda_results/dda_results_spheroid_sweep.h5`):
+
+- Grid axes: `D_ve_grid`, `RI_real_grid`, `log_AR_grid`, `cos_theta_o_half_grid`, `phi_o_grid`
+- Forward scattering amplitudes (5D, float64): `S_fw_theta_re`, `S_fw_theta_im`, `S_fw_phi_re`, `S_fw_phi_im` — shape `(N_Dve, N_RI, N_AR, N_u_half, N_ph)`
+- Convergence flag: `converged` — shape `(N_Dve, N_RI, N_AR)`, bool
+- Symmetry operations (cos_theta_o mirror to [-1,1], phi_o extension to [0,2pi]) are handled by the downstream consumer, not by block-DDA_Py
 
 ---
 

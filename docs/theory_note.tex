@@ -13,7 +13,7 @@
 \large Discrete Dipole Approximation with FFT-accelerated\\
 Block-Krylov Solver for Light Scattering by Arbitrary Particles}
 \author{N.\ Moteki}
-\date{Last updated: 2026-03-26 (corresponds to block-DDA\_Py v0.6.0)}
+\date{Last updated: 2026-03-28 (corresponds to block-DDA\_Py v0.7.1)}
 
 \begin{document}
 \maketitle
@@ -47,6 +47,8 @@ that are implemented in version~0.4.0 of
         (Sec.~\ref{sec:observables}),
   \item the Gaussian Random Ellipsoid (GRE) shape model
         (Sec.~\ref{sec:gre}),
+  \item the spheroid parameter sweep and its HDF5 output format
+        (Sec.~\ref{sec:spheroid-sweep}),
   \item the Mie theory reference solution for homogeneous spheres
         (Sec.~\ref{sec:mie}).
 \end{enumerate}
@@ -1048,6 +1050,150 @@ regimes, DDA with the spheroid-mode optimisation described above provides
 a viable alternative: the computation remains stable regardless of the
 aspect ratio, and the analytical $\alpha$-averaging reduces the cost by
 a factor of $N_\alpha$ relative to the general DDA mode.
+
+%======================================================================
+\section{Spheroid Parameter Sweep}
+\label{sec:spheroid-sweep}
+%======================================================================
+
+For systematic studies of spheroid scattering properties, a dedicated
+sweep script (\texttt{run\_dda\_spheroid\_sweep.py}) constructs equidistant
+grids over three physical parameters and a two-dimensional orientation
+grid on a reduced domain, executes the DDA in spheroid mode
+(Sec.~\ref{sec:spheroid}), and stores the forward-scattering amplitudes
+in an HDF5 file.  The output schema is specified in
+\texttt{spheroid\_h5\_schema\_spec.md} and is compatible with the
+downstream LUT builder (\texttt{build\_spheroid\_lut.py}).
+
+%----------------------------------------------------------------------
+\subsection{Parameter grid}
+\label{sec:sweep-grid}
+%----------------------------------------------------------------------
+
+The physical-parameter grid is spanned by three equidistant axes:
+\begin{align}
+  D_{ve}   &\in [D_{ve,\min},\; D_{ve,\max}],
+             &  N_{D_{ve}} &\text{ equally spaced points},
+  \label{eq:sweep-dve} \\
+  n_{\mathrm{real}}
+            &\in [n_{\mathrm{real},\min},\;
+                   n_{\mathrm{real},\max}],
+             &  N_{\mathrm{RI}} &\text{ equally spaced points},
+  \label{eq:sweep-ri} \\
+  \log_{10}(\mathrm{AR})
+            &\in [\log_{10}\mathrm{AR}_{\min},\;
+                   \log_{10}\mathrm{AR}_{\max}],
+             &  N_{\mathrm{AR}} &\text{ equally spaced points},
+  \label{eq:sweep-ar}
+\end{align}
+where $D_{ve} = 2 r_v$ is the volume-equivalent diameter,
+$n_{\mathrm{real}} = \operatorname{Re}(m_p)$ is the real part of the
+isotropic particle refractive index, and
+$\mathrm{AR} = b/c$ is the aspect ratio of the spheroid
+(equal to \texttt{bc\_ratio}; $\mathrm{AR}>1$ oblate, $<1$ prolate).
+
+The vacuum wavelength $\lambda_0$ and medium refractive index $m_m$
+are fixed parameters (stored as HDF5 root attributes, not swept).
+The imaginary refractive index $\operatorname{Im}(m_p)$ is also fixed
+(default~0).  The total number of DDA conditions is
+$N_{D_{ve}} \times N_{\mathrm{RI}} \times N_{\mathrm{AR}}$.
+
+The aspect-ratio grid is equally spaced in $\log_{10}(\mathrm{AR})$
+so that oblate and prolate shapes are sampled symmetrically about the
+sphere ($\mathrm{AR}=1$, i.e.\ $\log_{10}\mathrm{AR}=0$).
+
+%----------------------------------------------------------------------
+\subsection{Orientation grid on reduced domain}
+\label{sec:sweep-orientation}
+%----------------------------------------------------------------------
+
+For spheroids, the body-frame rotation angle $\gamma$ is irrelevant
+(Sec.~\ref{sec:spheroid}).  Furthermore, the forward-scattering
+amplitudes possess two symmetries that halve the required domain:
+\begin{enumerate}
+  \item \textbf{Polar mirror symmetry:}
+        $\bm{S}(\cos\theta_o) = \bm{S}(-\cos\theta_o)$,
+        so only $\cos\theta_o \in [0, 1]$ needs to be stored.
+  \item \textbf{Azimuthal periodicity:}
+        $\bm{S}(\theta_o,\, \phi_o) = \bm{S}(\theta_o,\, \phi_o + \pi)$,
+        so only $\phi_o \in [0, \pi]$ needs to be stored.
+\end{enumerate}
+
+The orientation grid is therefore:
+\begin{align}
+  \cos\theta_{o,j} &= \frac{j}{N_u - 1},
+                     \quad j = 0,\dots,N_u-1,
+  \label{eq:sweep-costheta} \\
+  \phi_{o,i} &= \frac{\pi\,i}{N_\phi - 1},
+               \quad i = 0,\dots,N_\phi-1,
+  \label{eq:sweep-phi}
+\end{align}
+where $N_u$ is the number of grid points in $\cos\theta_o \in [0, 1]$
+and $N_\phi$ is the number of grid points in $\phi_o \in [0, \pi]$.
+Both grids are equidistant and include both endpoints.
+
+The orientation angles map to Euler angles as
+$\theta_o \leftrightarrow \beta$ (polar) and
+$\phi_o \leftrightarrow \alpha$ (azimuthal).
+As described in Sec.~\ref{sec:spheroid}, only $N_u$ DDA solves are
+performed (at $\phi_o = 0$); the full $(\cos\theta_o,\, \phi_o)$
+grid is populated using the analytical constraint relations.
+
+%----------------------------------------------------------------------
+\subsection{HDF5 output structure}
+\label{sec:sweep-hdf5}
+%----------------------------------------------------------------------
+
+Results are stored in \texttt{dda\_results/dda\_results\_spheroid\_sweep.h5}.
+All datasets reside in the HDF5 root group (no subgroups).
+
+\begin{itemize}
+  \item \textbf{Grid axis arrays} (1D, equidistant):
+
+    \begin{tabular}{@{}llll@{}}
+      \toprule
+      Dataset & Shape & dtype & Description \\
+      \midrule
+      \texttt{D\_ve\_grid} & $(N_{D_{ve}},)$ & float64 &
+        Volume-equivalent diameter [\si{\micro\metre}] \\
+      \texttt{RI\_real\_grid} & $(N_{\mathrm{RI}},)$ & float64 &
+        Real refractive index \\
+      \texttt{log\_AR\_grid} & $(N_{\mathrm{AR}},)$ & float64 &
+        $\log_{10}(\mathrm{AR})$ \\
+      \texttt{cos\_theta\_o\_half\_grid} & $(N_u,)$ & float64 &
+        $\cos\theta_o$ on $[0,1]$ \\
+      \texttt{phi\_o\_grid} & $(N_\phi,)$ & float64 &
+        $\phi_o$ on $[0,\pi]$ [rad] \\
+      \bottomrule
+    \end{tabular}
+
+  \item \textbf{Forward scattering amplitudes}
+        (shape $(N_{D_{ve}}, N_{\mathrm{RI}}, N_{\mathrm{AR}},
+                 N_u, N_\phi)$, dtype float64):
+    \texttt{S\_fw\_theta\_re}, \texttt{S\_fw\_theta\_im},
+    \texttt{S\_fw\_phi\_re}, \texttt{S\_fw\_phi\_im}.
+    Non-converged cells contain NaN.
+
+  \item \textbf{Convergence flag}
+        (shape $(N_{D_{ve}}, N_{\mathrm{RI}}, N_{\mathrm{AR}})$,
+        dtype bool):
+    \texttt{converged}.  \texttt{True} where the DDA solver converged.
+
+  \item \textbf{Root attributes} (provenance):
+    \texttt{wl\_0}, \texttt{m\_m}, \texttt{m\_imag},
+    \texttt{rng\_seed}, \texttt{solver\_tol},
+    \texttt{block\_dda\_version}.
+\end{itemize}
+
+\paragraph{Symmetry handling.}
+The HDF5 contains only the reduced-domain data.  The downstream
+consumer mirrors $\cos\theta_o$ to $[-1, 1]$ and extends $\phi_o$ to
+$[0, 2\pi)$.  The analytical expansion from $\beta$-only DDA solves
+to the full $(\cos\theta_o,\, \phi_o)$ grid is performed by
+\texttt{block-DDA\_Py} before writing.
+
+A worked example for reading a single data point is provided in
+\texttt{read\_spheroid\_sweep\_example.py}.
 
 %======================================================================
 \section{Mie Theory Reference}

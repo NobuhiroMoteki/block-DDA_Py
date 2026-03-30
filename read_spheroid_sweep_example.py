@@ -9,12 +9,12 @@ import h5py
 import numpy as np
 
 # ── 取り出したい条件を指定 ──────────────────────────────────────────────────
-wl_0_target          = 0.834    # wavelength [um] (selects HDF5 group)
-D_ve_target          = 0.6      # volume-equivalent diameter [um]
-RI_real_target       = 1.5      # Re(m_p)
-log_AR_target        = 0.0      # log10(AR), 0 = sphere
-cos_theta_o_target   = 0.5      # cos(theta_o), half-domain [0, 1]
-phi_o_target         = 0.5      # phi_o [rad], domain [0, pi]
+wl_0_target          = 0.453    # wavelength [um] (selects HDF5 group)
+D_ve_target          = 0.3      # volume-equivalent diameter [um]
+RI_real_target       = 1.66      # Re(m_p)
+log_AR_target        = 0.85      # log10(AR), 0 = sphere
+cos_theta_o_target   = 0      # cos(theta_o), half-domain [0, 1]
+phi_o_target         = 0      # phi_o [rad], domain [0, pi]
 # ────────────────────────────────────────────────────────────────────────────
 
 with h5py.File("dda_results/dda_results_spheroid_sweep.h5", "r") as f:

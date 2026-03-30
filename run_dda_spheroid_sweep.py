@@ -24,7 +24,7 @@ from bl_dda.scatterer import Target, IncidentField, DiscreteDipoles
 # Settings — edit this section
 # ══════════════════════════════════════════════════════════════════════════════
 RNG_SEED    = 12345
-MAX_TRY     = 4
+MAX_TRY     = 1
 OUTPUT_FILE = "dda_results/dda_results_spheroid_sweep.h5"
 
 # (wavelength [um], medium refractive index) pairs
@@ -37,9 +37,9 @@ MEDIUM_CONDITIONS = [
 M_IMAG = 0.0     # imaginary part of particle refractive index (fixed)
 
 # Swept parameters: (min, max, N_grid)  — all grids are equidistant
-D_VE_RANGE     = (0.2, 1.0, 25)      # volume-equivalent diameter [um]
-RI_REAL_RANGE  = (1.2, 1.8, 19)      # Re(m_p)
-LOG10_AR_RANGE = (-2.1, 2.1, 15)     # log10(AR), AR = bc_ratio
+D_VE_RANGE     = (0.26, 0.56, 16)      # volume-equivalent diameter [um]
+RI_REAL_RANGE  = (1.2, 1.7, 21)      # Re(m_p)
+LOG10_AR_RANGE = (-0.8, 0.8, 17)     # log10(AR), AR = bc_ratio
 
 # Orientation grid on reduced domain
 N_COS_THETA_O_HALF = 13   # cos(theta_o) in [0, 1], equidistant

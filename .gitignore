@@ -28,3 +28,6 @@ old/
 *.synctex.gz
 *.out
 *.toc
+
+# Large binary data
+*.h5

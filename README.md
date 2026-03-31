@@ -1,4 +1,4 @@
-# block-DDA_Py  [![version](https://img.shields.io/badge/version-v0.7.2-blue)](https://github.com/NobuhiroMoteki/block-DDA_Py/releases)
+# block-DDA_Py  [![version](https://img.shields.io/badge/version-v0.7.4-blue)](https://github.com/NobuhiroMoteki/block-DDA_Py/releases)
 
 ## 📌 Description
 A Python code for the Discrete Dipole Approximation (DDA) using block-Krylov type iterative solvers, with custom features for light-scattering simulations of environmental particles (e.g., mineral dust).
@@ -105,7 +105,7 @@ For dedicated spheroid sweeps over a regular grid of physical parameters, use `r
 
    The script creates the HDF5 file `dda_results/dda_results_spheroid_sweep.h5` (if not existing) and runs the sweep. Intermediate results are written per condition, so the run can be interrupted and resumed.
 
-3. See `read_spheroid_sweep_example.py` for how to read results.
+3. See `read_spheroid_sweep.ipynb` for how to browse the file overview and retrieve results interactively.
 
 **Output HDF5 structure** (`dda_results/dda_results_spheroid_sweep.h5`):
 

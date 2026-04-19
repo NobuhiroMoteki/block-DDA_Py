@@ -60,6 +60,27 @@ matrices and second-rank tensors in upright bold ($\mathbf{A}$,
 $\boldsymbol{\alpha}$), and unit vectors carry a hat
 ($\hat{\bm{e}}$, $\hat{\bm{r}}$).
 
+\paragraph{Companion code for high-contrast particles.}
+DDA is most efficient when the refractive-index contrast is moderate
+($|m_p/m_m| \lesssim 2$). For high-contrast targets --- e.g.\ plasmonic
+metals (gold, silver), iron-oxide aggregates, extreme aspect ratios, or
+surface roughness finer than the DDA lattice spacing --- the DDA
+iteration converges slowly (or not at all) and the discretization error
+is dominated by the staircasing of curved boundaries on the cubic
+lattice. In those regimes the companion code
+\texttt{block-VIEM.jl}~\cite{blockVIEM}, a Julia implementation of the
+volume integral equation method (VIEM) with a tetrahedral-mesh
+SWG/half-SWG basis, Duffy-transform singular integration, and AIM-FFT
+accelerated block-Krylov iteration, is recommended. The two codes
+share the same physical input conventions ($\lambda_0$, $m_m$, $m_p$,
+including anisotropic $m_{p,xyz}$), Euler-angle convention (ZYZ
+intrinsic), GRE shape parametrization, HDF5 output schema, and CAS-v2
+observable definitions, so downstream analysis pipelines can consume
+either output without modification. Practically, we recommend
+\texttt{block-DDA\_Py} for $|m_p/m_m| < 2$ (where DDA is
+100--1000$\times$ faster in setup cost) and \texttt{block-VIEM.jl}
+otherwise.
+
 %======================================================================
 \section{DDA Formulation}
 \label{sec:dda-formulation}
@@ -1327,6 +1348,13 @@ are obtained from $S_1$ and $S_2$ at $\theta = 0$ and $\theta = \pi$.
   single particles in unbounded fluid flow: CAS-v2 protocol,''
   \textit{Opt.\ Express} \textbf{32}(21), 36500--36522 (2024).
   \url{https://doi.org/10.1364/OE.533776}.
+
+\bibitem{blockVIEM}
+  N.~Moteki,
+  \texttt{block-VIEM.jl}: Volume Integral Equation Method in Julia
+  (SWG/half-SWG basis, Duffy singular integration, AIM-FFT
+  block-Krylov solver).
+  \url{https://github.com/NobuhiroMoteki/block-VIEM.jl}.
 \end{thebibliography}
 
 \section*{Acknowledgment}

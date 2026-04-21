@@ -31,3 +31,4 @@ old/
 
 # Large binary data
 *.h5
+*.hdf5

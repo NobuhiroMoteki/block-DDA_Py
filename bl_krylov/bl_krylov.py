@@ -55,6 +55,18 @@ def _block_mvp(n, f, Au_til, full_idx, DIAG_A, S, jpre):
     return (DIAG_A[:, np.newaxis] * S + AP_full[full_idx, :]) * jpre[:, np.newaxis]
 
 
+def _block_mvp_noprec(n, f, Au_til, full_idx, DIAG_A, S):
+    """
+    Compute  AS = DIAG_A * S + A_offdiag * S  for all L columns at once,
+    with no Jacobi preconditioning. VIEM parity variant.
+    """
+    num_element_cuboid = np.prod(n)
+    P_hat = np.zeros((f * num_element_cuboid, S.shape[1]), dtype=np.complex128)
+    P_hat[full_idx, :] = S
+    AP_full = fft_mvp(n, f, Au_til, P_hat)
+    return DIAG_A[:, np.newaxis] * S + AP_full[full_idx, :]
+
+
 def bl_cocg_rq_jacobi_mvp_fft(n, f, address, Au_til, DIAG_A, B, tol, itermax):
     """
     Block-COCG-RQ with Jacobi preconditioning and FFT-accelerated MVP.
@@ -185,3 +197,151 @@ def bl_bicgstab_jacobi_mvp_fft(n, f, address, Au_til, DIAG_A, B, tol, itermax):
         P = R + (P - qsi * V) @ beta
 
     return X, iter_fin, err_fin
+
+
+def bl_bicgstab_mvp_fft(n, f, address, Au_til, DIAG_A, B, tol, itermax, verbose=False):
+    """
+    Block-BiCGSTAB without Jacobi preconditioning. Solves A X = B.
+
+    Direct Python port of block-VIEM.jl's `block_bicgstab`
+    (src/block_krylov.jl), which is itself a port of
+    bl_bicgstab_jacobi_mvp_fft minus the preconditioner.
+
+    Same API as bl_bicgstab_jacobi_mvp_fft; DIAG_A is used in the MVP
+    (A = DIAG_A + A_offdiag) but no preconditioning is applied.
+
+    Parameters
+    ----------
+    n       : array_like [Nx, Ny, Nz]
+    f       : int  (3 for electric dipoles)
+    address : 1-D int array of occupied cuboid addresses
+    Au_til  : ndarray (2Nx,2Ny,2Nz,3,3) – pre-FFT interaction tensor
+    DIAG_A  : 1-D complex array (f*N_occ,) – diagonal of A
+    B       : 2-D complex array (f*N_occ, L) – RHS block
+    tol     : float  convergence tolerance
+    itermax : int    maximum iterations
+    verbose : bool   print per-iteration residual (default False for new solvers)
+
+    Returns
+    -------
+    X        : ndarray (f*N_occ, L) – solution block
+    iter_fin : int   – final iteration count
+    err_fin  : float – final relative residual ‖B − A X‖_F / ‖B‖_F
+    """
+    full_idx = _build_scatter_index(address, f)
+    B_norm = np.linalg.norm(B)
+    if B_norm == 0.0:
+        return np.zeros_like(B), 0, 0.0
+
+    X = np.zeros_like(B)
+    R = B.copy()
+    P = R.copy()
+    R0til = R.copy()
+    R0til_H = R0til.conj().T
+
+    iter_fin = 0
+    err_fin = float('inf')
+
+    for k in range(itermax):
+        V = _block_mvp_noprec(n, f, Au_til, full_idx, DIAG_A, P)
+
+        RV = R0til_H @ V
+        alpha = np.linalg.solve(RV, R0til_H @ R)
+        T = R - V @ alpha
+
+        Z = _block_mvp_noprec(n, f, Au_til, full_idx, DIAG_A, T)
+
+        qsi = np.trace(Z.conj().T @ T) / np.trace(Z.conj().T @ Z)
+        X = X + P @ alpha + qsi * T
+        R = T - qsi * Z
+
+        err = np.linalg.norm(R) / B_norm
+        if verbose:
+            print("iter= {:}, err= {:.4f}".format(k, err))
+        iter_fin = k
+        err_fin = err
+        if err < tol:
+            break
+
+        beta = np.linalg.solve(RV, (-R0til_H @ Z))
+        P = R + (P - qsi * V) @ beta
+
+    return X, iter_fin, err_fin
+
+
+def bl_gmres_mvp_fft(n, f, address, Au_til, DIAG_A, B, tol, itermax, verbose=False):
+    """
+    Unrestarted Block GMRES without Jacobi preconditioning.
+    Solves A X = B via block-Arnoldi with thin QR of each new block.
+
+    Simoncini & Szyld, NLAA 1996.
+    Direct Python port of block-VIEM.jl's `block_gmres` (src/block_krylov.jl).
+
+    Memory cost is O(itermax · f·N_occ · L) — the full block Krylov basis
+    is retained. For long-running problems, use bl_bicgstab_mvp_fft.
+
+    Parameters
+    ----------
+    n, f, address, Au_til, DIAG_A, B, tol, itermax : same as bl_bicgstab_mvp_fft
+    verbose : bool   print per-iteration residual (default False)
+
+    Returns
+    -------
+    X        : ndarray (f*N_occ, L) – solution block
+    iter_fin : int   – final iteration count
+    err_fin  : float – final relative residual ‖B − A X‖_F / ‖B‖_F
+    """
+    L = B.shape[1]
+    N = B.shape[0]
+    full_idx = _build_scatter_index(address, f)
+
+    B_norm = np.linalg.norm(B)
+    if B_norm == 0.0:
+        return np.zeros_like(B), 0, 0.0
+
+    # Initial residual (X0 = 0 ⇒ R0 = B) and its thin QR: R0 = V1 · Λ
+    V1, Lambda = np.linalg.qr(B, mode='reduced')   # V1: (N,L),  Lambda: (L,L)
+
+    Vblocks = [V1]
+    # Hfull stored as a dense block-Hessenberg matrix grown block-column by block-column.
+    Hfull = np.zeros(((itermax + 1) * L, itermax * L), dtype=np.complex128)
+
+    iter_fin = 0
+    err_fin = float('inf')
+    last_X = np.zeros_like(B)
+
+    for k in range(1, itermax + 1):
+        iter_fin = k - 1
+        W = _block_mvp_noprec(n, f, Au_til, full_idx, DIAG_A, Vblocks[k - 1])
+
+        # Block Gram–Schmidt against prior blocks
+        for i in range(1, k + 1):
+            Hik = Vblocks[i - 1].conj().T @ W
+            Hfull[(i - 1) * L:i * L, (k - 1) * L:k * L] = Hik
+            W = W - Vblocks[i - 1] @ Hik
+
+        # Thin QR of the remaining block
+        Vk1, Hk1k = np.linalg.qr(W, mode='reduced')
+        Hfull[k * L:(k + 1) * L, (k - 1) * L:k * L] = Hk1k
+        Vblocks.append(Vk1)
+
+        # Least-squares:  min ‖ H_k · Y − E1·Λ ‖_F  over the current (k+1)L × kL
+        m = (k + 1) * L
+        nn = k * L
+        Hk_view = Hfull[:m, :nn]
+        rhs = np.zeros((m, L), dtype=np.complex128)
+        rhs[:L, :] = Lambda
+        Y, _, _, _ = np.linalg.lstsq(Hk_view, rhs, rcond=None)
+        resblk = Hk_view @ Y - rhs
+        err = np.linalg.norm(resblk) / B_norm
+        if verbose:
+            print("iter= {:}, err= {:.4f}".format(k - 1, err))
+        err_fin = err
+
+        if err < tol or k == itermax:
+            X = np.zeros((N, L), dtype=np.complex128)
+            for j in range(1, k + 1):
+                X += Vblocks[j - 1] @ Y[(j - 1) * L:j * L, :]
+            return X, iter_fin, err_fin
+
+    return last_X, iter_fin, err_fin

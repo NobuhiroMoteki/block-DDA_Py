@@ -1,4 +1,5 @@
 import numpy as np
+import scipy.linalg
 from mvp_fft.mvp_fft import fft_mvp
 
 
@@ -224,14 +225,16 @@ def bl_bicgstab_mvp_fft(n, f, address, Au_til, DIAG_A, B, tol, itermax, verbose=
 
     Returns
     -------
-    X        : ndarray (f*N_occ, L) – solution block
-    iter_fin : int   – final iteration count
-    err_fin  : float – final relative residual ‖B − A X‖_F / ‖B‖_F
+    X           : ndarray (f*N_occ, L) – solution block
+    iter_fin    : int   – final iteration count
+    err_fin     : float – final relative residual ‖B − A X‖_F / ‖B‖_F
+    err_history : ndarray (iter_fin+1,) float64 – per-iteration residuals
+                  (same scale as err_fin, indexed 0..iter_fin)
     """
     full_idx = _build_scatter_index(address, f)
     B_norm = np.linalg.norm(B)
     if B_norm == 0.0:
-        return np.zeros_like(B), 0, 0.0
+        return np.zeros_like(B), 0, 0.0, np.zeros(1, dtype=np.float64)
 
     X = np.zeros_like(B)
     R = B.copy()
@@ -241,6 +244,7 @@ def bl_bicgstab_mvp_fft(n, f, address, Au_til, DIAG_A, B, tol, itermax, verbose=
 
     iter_fin = 0
     err_fin = float('inf')
+    err_history = []
 
     for k in range(itermax):
         V = _block_mvp_noprec(n, f, Au_til, full_idx, DIAG_A, P)
@@ -256,6 +260,7 @@ def bl_bicgstab_mvp_fft(n, f, address, Au_til, DIAG_A, B, tol, itermax, verbose=
         R = T - qsi * Z
 
         err = np.linalg.norm(R) / B_norm
+        err_history.append(float(err))
         if verbose:
             print("iter= {:}, err= {:.4f}".format(k, err))
         iter_fin = k
@@ -266,19 +271,41 @@ def bl_bicgstab_mvp_fft(n, f, address, Au_til, DIAG_A, B, tol, itermax, verbose=
         beta = np.linalg.solve(RV, (-R0til_H @ Z))
         P = R + (P - qsi * V) @ beta
 
-    return X, iter_fin, err_fin
+    return X, iter_fin, err_fin, np.asarray(err_history, dtype=np.float64)
 
 
 def bl_gmres_mvp_fft(n, f, address, Au_til, DIAG_A, B, tol, itermax, verbose=False):
     """
     Unrestarted Block GMRES without Jacobi preconditioning.
-    Solves A X = B via block-Arnoldi with thin QR of each new block.
+    Solves A X = B via block-Arnoldi with thin QR of each new block, and
+    **incremental block-Givens QR triangularisation** of the Hessenberg —
+    the residual Frobenius norm is available at each step without solving
+    a least-squares problem (Saad & Schultz 1986; Simoncini & Szyld,
+    NLAA 1996).
 
-    Simoncini & Szyld, NLAA 1996.
-    Direct Python port of block-VIEM.jl's `block_gmres` (src/block_krylov.jl).
+    Python port of block-VIEM.jl's `block_gmres` (src/block_krylov.jl)
+    including its incremental-QR optimisation (VIEM 2026-04-24).
 
-    Memory cost is O(itermax · f·N_occ · L) — the full block Krylov basis
-    is retained. For long-running problems, use bl_bicgstab_mvp_fft.
+    Previous lstsq-based implementation cost O((kL)³) per iteration;
+    this version costs O(kL²) per iteration for rotation propagation
+    plus one 2L×L block QR (O(L³)).  Speedup is material for L=100
+    GRE sweeps.
+
+    Maintained state across iterations:
+      R_tri    — (itermax·L, itermax·L) upper-triangular factor of H
+                 after block-Givens triangularisation (stored for final
+                 back-substitution)
+      b_hat    — ((itermax+1)·L, L) transformed RHS; init [Λ; 0; …].
+                 Residual Frobenius norm at iteration k equals
+                 ‖b_hat[kL:(k+1)L, :]‖_F.
+      Qstore   — list of 2L×2L orthogonal Q factors, one per iter k,
+                 obtained by QR of the 2L×L super-block
+                 [H_{kk}; H_{k+1,k}].  Applied from the left to
+                 future H-columns and the corresponding row range of
+                 b_hat.
+
+    Memory cost is O(itermax · f·N_occ · L) — the full block Krylov
+    basis is retained. For long-running problems, use bl_bicgstab_mvp_fft.
 
     Parameters
     ----------
@@ -287,9 +314,10 @@ def bl_gmres_mvp_fft(n, f, address, Au_til, DIAG_A, B, tol, itermax, verbose=Fal
 
     Returns
     -------
-    X        : ndarray (f*N_occ, L) – solution block
-    iter_fin : int   – final iteration count
-    err_fin  : float – final relative residual ‖B − A X‖_F / ‖B‖_F
+    X           : ndarray (f*N_occ, L) – solution block
+    iter_fin    : int   – final iteration count (0-based, as before)
+    err_fin     : float – final relative residual ‖B − A X‖_F / ‖B‖_F
+    err_history : ndarray (iter_fin+1,) float64 – per-iteration residuals
     """
     L = B.shape[1]
     N = B.shape[0]
@@ -297,51 +325,83 @@ def bl_gmres_mvp_fft(n, f, address, Au_til, DIAG_A, B, tol, itermax, verbose=Fal
 
     B_norm = np.linalg.norm(B)
     if B_norm == 0.0:
-        return np.zeros_like(B), 0, 0.0
+        return np.zeros_like(B), 0, 0.0, np.zeros(1, dtype=np.float64)
 
     # Initial residual (X0 = 0 ⇒ R0 = B) and its thin QR: R0 = V1 · Λ
     V1, Lambda = np.linalg.qr(B, mode='reduced')   # V1: (N,L),  Lambda: (L,L)
 
     Vblocks = [V1]
-    # Hfull stored as a dense block-Hessenberg matrix grown block-column by block-column.
-    Hfull = np.zeros(((itermax + 1) * L, itermax * L), dtype=np.complex128)
+
+    # Incremental block-Givens QR state
+    R_tri = np.zeros((itermax * L, itermax * L), dtype=np.complex128)
+    b_hat = np.zeros(((itermax + 1) * L, L), dtype=np.complex128)
+    b_hat[:L, :] = Lambda
+    Qstore = [None] * itermax                  # 2L×2L full Q per iter
 
     iter_fin = 0
     err_fin = float('inf')
-    last_X = np.zeros_like(B)
+    err_history = []
 
     for k in range(1, itermax + 1):
         iter_fin = k - 1
         W = _block_mvp_noprec(n, f, Au_til, full_idx, DIAG_A, Vblocks[k - 1])
 
-        # Block Gram–Schmidt against prior blocks
+        # Block Gram–Schmidt: build H_col of shape ((k+1)L, L).
+        H_col = np.zeros(((k + 1) * L, L), dtype=np.complex128)
         for i in range(1, k + 1):
             Hik = Vblocks[i - 1].conj().T @ W
-            Hfull[(i - 1) * L:i * L, (k - 1) * L:k * L] = Hik
+            H_col[(i - 1) * L:i * L, :] = Hik
             W = W - Vblocks[i - 1] @ Hik
 
-        # Thin QR of the remaining block
+        # Thin QR of the remaining block → V_{k+1}, H_{k+1,k}
         Vk1, Hk1k = np.linalg.qr(W, mode='reduced')
-        Hfull[k * L:(k + 1) * L, (k - 1) * L:k * L] = Hk1k
+        H_col[k * L:(k + 1) * L, :] = Hk1k
         Vblocks.append(Vk1)
 
-        # Least-squares:  min ‖ H_k · Y − E1·Λ ‖_F  over the current (k+1)L × kL
-        m = (k + 1) * L
-        nn = k * L
-        Hk_view = Hfull[:m, :nn]
-        rhs = np.zeros((m, L), dtype=np.complex128)
-        rhs[:L, :] = Lambda
-        Y, _, _, _ = np.linalg.lstsq(Hk_view, rhs, rcond=None)
-        resblk = Hk_view @ Y - rhs
-        err = np.linalg.norm(resblk) / B_norm
+        # Apply previously stored block-Givens rotations (j = 1..k-1).
+        # Rotation j acts on rows (j-1)L : (j+1)L of the current H-column.
+        for j in range(1, k):
+            rlo = (j - 1) * L
+            rhi = (j + 1) * L
+            H_col[rlo:rhi, :] = Qstore[j - 1].conj().T @ H_col[rlo:rhi, :]
+
+        # New block-Givens: QR the 2L×L super-block [H_kk; H_{k+1,k}].
+        # Use mode='complete' to obtain full 2L×2L Q (mode='reduced' returns
+        # only 2L×L, which would discard the rotation on the off-diagonal
+        # block-row that must act on b_hat).
+        super_lo = (k - 1) * L
+        super_hi = (k + 1) * L
+        Qmat, Rmat = np.linalg.qr(H_col[super_lo:super_hi, :], mode='complete')
+        # Qmat: (2L, 2L), Rmat: (2L, L); take the top L×L of Rmat as the
+        # new diagonal block and zero the sub-diagonal.
+        Qstore[k - 1] = Qmat
+        H_col[super_lo:super_lo + L, :] = Rmat[:L, :]
+        H_col[super_lo + L:super_hi, :] = 0.0
+
+        # Store k-th block column of R_tri (only first k block-rows non-zero).
+        R_tri[:k * L, (k - 1) * L:k * L] = H_col[:k * L, :]
+
+        # Apply new rotation to b_hat on the same row range.
+        b_hat[super_lo:super_hi, :] = Qmat.conj().T @ b_hat[super_lo:super_hi, :]
+
+        # Residual Frobenius norm: rows kL : (k+1)L of b_hat.
+        err = np.linalg.norm(b_hat[k * L:(k + 1) * L, :]) / B_norm
+        err_history.append(float(err))
         if verbose:
-            print("iter= {:}, err= {:.4f}".format(k - 1, err))
+            print("iter= {:}, err= {:.4e}".format(k - 1, err))
         err_fin = err
 
         if err < tol or k == itermax:
+            # Upper-triangular solve  R_k · Y = b_hat[:kL, :]
+            R_top = R_tri[:k * L, :k * L]
+            Y = scipy.linalg.solve_triangular(R_top, b_hat[:k * L, :],
+                                              lower=False)
+            # Reconstruct X = Σ_j V_j · Y_j
             X = np.zeros((N, L), dtype=np.complex128)
             for j in range(1, k + 1):
                 X += Vblocks[j - 1] @ Y[(j - 1) * L:j * L, :]
-            return X, iter_fin, err_fin
+            return X, iter_fin, err_fin, np.asarray(err_history, dtype=np.float64)
 
-    return last_X, iter_fin, err_fin
+    # Unreachable; the loop always returns on its final iteration.
+    return (np.zeros_like(B), iter_fin, err_fin,
+            np.asarray(err_history, dtype=np.float64))

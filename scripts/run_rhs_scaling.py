@@ -36,20 +36,22 @@ import h5py
 from shape_model.gaussian_ellipsoid import gaussian_ellipsoid_shape_model
 from shape_model.two_sphere_cluster import two_sphere_cluster_shape_model
 from bl_dda.scatterer import Target, IncidentField, DiscreteDipoles
-from bl_krylov.bl_krylov import bl_bicgstab_mvp_fft, bl_gmres_mvp_fft
+from bl_krylov.bl_krylov import bl_gmres_mvp_fft
 
 
 RNG_SEED    = 12345
 # Convergence criterion is unified between block-DDA_Py and block-VIEM.jl
-# at tol=1e-5 / maxiter=100:  tol=1e-5 is still 2–3 orders below the
-# DDA/VIEM discretization error, and maxiter=100 keeps the GMRES Krylov
-# basis (O(maxiter · f·N_occ · L)) within machine memory for r_v=0.4 ×
-# high × L=128.  VIEM side mirrors these values.
+# (v0.7.6, 2026-04-24) at tol=1e-5 / maxiter=200.  tol=1e-5 is still 2–3
+# orders below the DDA/VIEM discretization error.  maxiter=200 was chosen
+# after observing that some high-index / large-r_v cases need >100 iters
+# at small L (n317 × r_v=0.4 at L=5, dpl-convergence Au stagnation);
+# 200 keeps the GMRES Krylov basis within machine memory for sphere-only
+# RHS-scaling.  Production path is GMRES-only (BiCGSTAB deprecated for
+# paper comparison, VIEM-side decision synced).
 SOLVER_TOL  = 1e-5
-MAXITER     = 100
+MAXITER     = 200
 L_LIST      = [1, 2, 4, 8, 16, 32, 64, 128]   # VIEM v0.7.1 parity
 METHODS     = [
-    ("bicgstab", bl_bicgstab_mvp_fft),
     ("gmres",    bl_gmres_mvp_fft),
 ]
 
@@ -100,17 +102,18 @@ def measure_one(target, wl_0, m_m, method_fn, L):
     dd.set_interaction_matrix()
 
     t0 = time.time()
-    X, iter_fin, err_fin = method_fn(
+    X, iter_fin, err_fin, err_history = method_fn(
         dd.lattice_n, dd.f, dd.lattice_address_in_target,
         dd.Au_til, dd.diag_A, dd.B,
         SOLVER_TOL, MAXITER,
     )
     t_total = time.time() - t0
     return {
-        "iters":     int(iter_fin + 1),   # report count (1-based)
-        "converged": bool(err_fin < SOLVER_TOL),
-        "t_total":   float(t_total),
-        "t_per":     float(t_total / max(L, 1)),
+        "iters":       int(iter_fin + 1),   # report count (1-based)
+        "converged":   bool(err_fin < SOLVER_TOL),
+        "t_total":     float(t_total),
+        "t_per":       float(t_total / max(L, 1)),
+        "err_history": err_history,
     }
 
 
@@ -141,6 +144,7 @@ def _write_results(t_grp, results, n_cuboid_arr, n_occ_arr):
         sg.create_dataset("converged",               data=arrays["converged"])
         sg.create_dataset("t_total_s",               data=arrays["t_total"])
         sg.create_dataset("t_end2end_per_orient_s",  data=arrays["t_per"])
+        sg.create_dataset("residual_history",        data=arrays["err_history"])
 
 
 def main():
@@ -195,11 +199,13 @@ def main():
 
         results = {
             name: {
-                "fn_name":   fn.__name__,
-                "iters":     np.zeros((nL, n_rv, n_bc, n_ab, n_bt), dtype=np.int64),
-                "converged": np.zeros((nL, n_rv, n_bc, n_ab, n_bt), dtype=np.int64),
-                "t_total":   np.zeros((nL, n_rv, n_bc, n_ab, n_bt), dtype=np.float64),
-                "t_per":     np.zeros((nL, n_rv, n_bc, n_ab, n_bt), dtype=np.float64),
+                "fn_name":     fn.__name__,
+                "iters":       np.zeros((nL, n_rv, n_bc, n_ab, n_bt), dtype=np.int64),
+                "converged":   np.zeros((nL, n_rv, n_bc, n_ab, n_bt), dtype=np.int64),
+                "t_total":     np.zeros((nL, n_rv, n_bc, n_ab, n_bt), dtype=np.float64),
+                "t_per":       np.zeros((nL, n_rv, n_bc, n_ab, n_bt), dtype=np.float64),
+                "err_history": np.full((nL, n_rv, n_bc, n_ab, n_bt, MAXITER),
+                                       np.nan, dtype=np.float64),
             } for name, fn in METHODS
         }
 
@@ -235,6 +241,8 @@ def main():
                                 r["converged"][iL,i_rv,i_bc,i_ab,i_bt] = 1 if m["converged"] else 0
                                 r["t_total"]  [iL,i_rv,i_bc,i_ab,i_bt] = m["t_total"]
                                 r["t_per"]    [iL,i_rv,i_bc,i_ab,i_bt] = m["t_per"]
+                                eh = m["err_history"]
+                                r["err_history"][iL,i_rv,i_bc,i_ab,i_bt, :eh.size] = eh
                                 conv = "✓" if m["converged"] else "✗"
                                 _log(f"    L={L:<3d}  iters={m['iters']:<4d} "
                                      f"{conv}  t_total={m['t_total']:>7.2f}s  "

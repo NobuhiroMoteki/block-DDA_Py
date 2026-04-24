@@ -36,6 +36,9 @@ import h5py
 
 from shape_model.gaussian_ellipsoid import gaussian_ellipsoid_shape_model
 from shape_model.two_sphere_cluster import two_sphere_cluster_shape_model
+from utils.dpl_calibration import (
+    dpl_for_slot, material_label, shape_label, get_n_tet_target,
+)
 
 
 RNG_SEED = 12345
@@ -66,15 +69,17 @@ def _is_spheroid(shape_kind, ab_ratio, gre_beta):
     return shape_kind == "doublet" or (ab_ratio == 1.0 and gre_beta == 0.0)
 
 
-def _build_shape_lattice(shape_kind, r_v, bc, ab, gre_beta, wl_min, m_p_max):
+def _build_shape_lattice(shape_kind, r_v, bc, ab, gre_beta, wl_min, m_p_max, dpl):
     """Build the cuboid lattice for one shape slot with worst-case (λ_min, |m_p|_max)
-    and return (lattice_n, N_occ)."""
+    and return (lattice_n, N_occ). Uses per-slot `dpl` (auto-calibrated to
+    VIEM n_tet via utils.dpl_calibration)."""
     m_p_xyz = np.array([m_p_max, m_p_max, m_p_max], dtype=np.complex64)
     if shape_kind == "doublet":
-        mdl = two_sphere_cluster_shape_model(r_v, wl_min, m_p_xyz)
+        mdl = two_sphere_cluster_shape_model(r_v, wl_min, m_p_xyz, dpl=dpl)
         lattice_n, _, _, is_in = mdl.build()
     else:
-        mdl = gaussian_ellipsoid_shape_model(r_v, bc, ab, gre_beta, wl_min, m_p_xyz)
+        mdl = gaussian_ellipsoid_shape_model(r_v, bc, ab, gre_beta, wl_min,
+                                             m_p_xyz, dpl=dpl)
         rng = np.random.default_rng(RNG_SEED)
         r_pts, _ = mdl.compute_r_points_on_GRE(rng)
         _, lattice_n, grid = mdl.create_cuboid_lattice_that_encloses_GRE_shape(r_pts)
@@ -167,9 +172,9 @@ def main():
         print(f"worst-case  : wl_0_min={wl_min:.4f} μm  |m_p|_max={m_p_max:.4f}")
         print()
 
-        hdr = ("{:<13} {:>8} {:>8} {:>8} {:>8} {:>9} {:>8} {:>4} {:>9} {:>9} {:>10} {:>10}"
+        hdr = ("{:<13} {:>8} {:>8} {:>8} {:>8} {:>7} {:>9} {:>8} {:>4} {:>9} {:>9} {:>10} {:>10}"
                .format("shape_idx", "r_v(μm)", "bc", "ab", "β_gre",
-                       "N_cub", "N_occ", "L", "RSS",
+                       "dpl", "N_cub", "N_occ", "L", "RSS",
                        "t_setup", "t_per_ori", "t_total"))
         print(rule)
         print(hdr)
@@ -186,8 +191,18 @@ def main():
                         ab   = float(ab_list[i_ab])
                         beta = float(bt_list[i_bt])
 
+                        # Auto-dpl from VIEM n_tet table (CLAUDE.md §3 v0.7.6+)
+                        shape_lbl = shape_label(shape_kind, bc, ab, beta)
+                        mat_scalar = complex(np.mean(m_p_list[0]))
+                        mat_lbl = material_label(mat_scalar)
+                        n_tet_target = get_n_tet_target(shape_lbl, mat_lbl, r_v)
+                        m_p_xyz_worst = np.array([m_p_max]*3, dtype=np.complex64)
+                        dpl_slot = dpl_for_slot(shape_lbl, mat_lbl, r_v,
+                                                m_p_xyz_worst, wl_0=wl_min)
+
                         lattice_n, n_occ = _build_shape_lattice(
-                            shape_kind, r_v, bc, ab, beta, wl_min, m_p_max)
+                            shape_kind, r_v, bc, ab, beta, wl_min, m_p_max,
+                            dpl=dpl_slot)
                         n_cub = int(np.prod(lattice_n))
 
                         spheroid = _is_spheroid(shape_kind, ab, beta)
@@ -203,9 +218,10 @@ def main():
                         flag = " ⚠️" if (warn_t or warn_rss) else ""
                         mode = "S" if spheroid else "G"
                         print("({:1d},{:1d},{:1d},{:1d})   {:>8.4f} {:>8.2f} {:>8.2f} "
-                              "{:>8.2f} {:>9d} {:>8d} {:>3d}{} {:>9} {:>9} {:>10} {:>10}{}"
+                              "{:>8.2f} {:>7.2f} {:>9d} {:>8d} {:>3d}{} {:>9} {:>9} {:>10} {:>10}{}"
                               .format(i_rv, i_bc, i_ab, i_bt,
                                       r_v, bc, ab, beta,
+                                      dpl_slot,
                                       n_cub, n_occ, L_solve, mode,
                                       _fmt_gb(rss_gb),
                                       _fmt_time(t_setup),

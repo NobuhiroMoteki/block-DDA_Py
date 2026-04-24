@@ -37,11 +37,15 @@ from analytical_scattering_theories.homogeneous_sphere import mie_compute_q_and_
 from bl_dda.scatterer import Target, IncidentField, DiscreteDipoles
 from bl_krylov.bl_krylov import bl_gmres_mvp_fft
 from utils.rss_monitor import RSSMonitor
+from utils.dpl_calibration import (
+    dpl_for_slot, material_label, shape_label, get_n_tet_target,
+)
 
 
 RNG_SEED    = 12345
 SOLVER_TOL  = 1e-5
-MAXITER     = 100
+MAXITER     = 200   # v0.7.6+ (VIEM-synced): raised from 100 to allow paper
+                    # sweeps with heavier index contrast to reach tol.
 
 
 def _log(msg: str) -> None:
@@ -56,8 +60,8 @@ def _decode_attr(val, default):
     return str(val)
 
 
-def _build_gre_target(r_v, bc, ab, beta, wl_0, m_p_xyz):
-    gre = gaussian_ellipsoid_shape_model(r_v, bc, ab, beta, wl_0, m_p_xyz)
+def _build_gre_target(r_v, bc, ab, beta, wl_0, m_p_xyz, dpl):
+    gre = gaussian_ellipsoid_shape_model(r_v, bc, ab, beta, wl_0, m_p_xyz, dpl=dpl)
     rng = np.random.default_rng(RNG_SEED)
     r_pts, _ = gre.compute_r_points_on_GRE(rng)
     _, lattice_n, grid = gre.create_cuboid_lattice_that_encloses_GRE_shape(r_pts)
@@ -67,16 +71,16 @@ def _build_gre_target(r_v, bc, ab, beta, wl_0, m_p_xyz):
     return Target(gre.name, lattice_n, gre.lattice_lf, grid, is_in, m_p_xyz, r_v)
 
 
-def _build_doublet_target(r_v, wl_0, m_p_xyz):
-    mdl = two_sphere_cluster_shape_model(r_v, wl_0, m_p_xyz)
+def _build_doublet_target(r_v, wl_0, m_p_xyz, dpl):
+    mdl = two_sphere_cluster_shape_model(r_v, wl_0, m_p_xyz, dpl=dpl)
     lattice_n, lf, grid, is_in = mdl.build()
     return Target(mdl.name, lattice_n, lf, grid, is_in, m_p_xyz, r_v)
 
 
-def _build_target(shape_kind, r_v, bc, ab, beta, wl_0, m_p_xyz):
+def _build_target(shape_kind, r_v, bc, ab, beta, wl_0, m_p_xyz, dpl):
     if shape_kind == "doublet":
-        return _build_doublet_target(r_v, wl_0, m_p_xyz)
-    return _build_gre_target(r_v, bc, ab, beta, wl_0, m_p_xyz)
+        return _build_doublet_target(r_v, wl_0, m_p_xyz, dpl)
+    return _build_gre_target(r_v, bc, ab, beta, wl_0, m_p_xyz, dpl)
 
 
 def _generate_euler_grid(N_alpha, N_beta, N_gamma):
@@ -101,7 +105,7 @@ def _solve_observables(target, inc):
     t_setup = time.time() - t0
 
     t0 = time.time()
-    X, iter_fin, err_fin = bl_gmres_mvp_fft(
+    X, iter_fin, err_fin, err_history = bl_gmres_mvp_fft(
         dd.lattice_n, dd.f, dd.lattice_address_in_target,
         dd.Au_til, dd.diag_A, dd.B,
         SOLVER_TOL, MAXITER,
@@ -116,7 +120,7 @@ def _solve_observables(target, inc):
         return dict(C_abs=nan_r, C_ext=nan_r,
                     S_fw_theta=nan_c, S_fw_phi=nan_c, S_bk=nan_c,
                     converged=False, iters=int(iter_fin + 1),
-                    err=float(err_fin),
+                    err=float(err_fin), err_history=err_history,
                     t_setup_s=t_setup, t_solve_s=t_solve)
 
     dd.X = X
@@ -130,7 +134,7 @@ def _solve_observables(target, inc):
     return dict(C_abs=C_abs, C_ext=C_ext,
                 S_fw_theta=S_fw_theta, S_fw_phi=S_fw_phi, S_bk=S_bk,
                 converged=True, iters=int(iter_fin + 1),
-                err=float(err_fin),
+                err=float(err_fin), err_history=err_history,
                 t_setup_s=t_setup, t_solve_s=t_solve)
 
 
@@ -260,24 +264,39 @@ def main():
                                  f"shape={shape_idx4} (already computed)")
                             continue
 
+                        # Auto-dpl: pick dpl so that DDA's N_occ matches
+                        # VIEM's n_tet for this (shape, material, a_eq) slot
+                        # within 1.5× (CLAUDE.md §3, v0.7.6+).
+                        shape_lbl = shape_label(shape_kind, bc, ab, bt)
+                        m_scalar = complex(np.mean(m_p_xyz))
+                        mat_lbl  = material_label(m_scalar)
+                        n_tet_target = get_n_tet_target(shape_lbl, mat_lbl, r_v)
+                        dpl_slot = dpl_for_slot(shape_lbl, mat_lbl, r_v,
+                                                m_p_xyz, wl_0=wl_0)
+
                         monitor.reset()
                         t_slot_start = time.time()
 
                         t0 = time.time()
                         tgt = _build_target(shape_kind, r_v, bc, ab, bt,
-                                            wl_0, m_p_xyz)
+                                            wl_0, m_p_xyz, dpl=dpl_slot)
                         t_build = time.time() - t0
 
                         print("─" * 72)
                         mode_tag = (f" [spheroid, L_solve={N_beta}]"
                                     if spheroid_mode
                                     else f" [general, L_solve={num_orientations}]")
+                        ratio = tgt.num_element_occupy / max(n_tet_target, 1)
                         _log(f"wl_0={wl_0:.4f}  m_m={m_m:.3f}  "
                              f"m_p_xyz={m_p_xyz}  "
                              f"r_v={r_v:.3f}  bc={bc:.1f}  ab={ab:.1f}  "
-                             f"β={bt:.2f}  d={tgt.lattice_lf:.5f}μm  "
+                             f"β={bt:.2f}  "
+                             f"[{shape_lbl}/{mat_lbl}] dpl={dpl_slot:.2f}  "
+                             f"d={tgt.lattice_lf:.5f}μm  "
                              f"N_cub={int(np.prod(tgt.lattice_n))}  "
-                             f"N_occ={tgt.num_element_occupy}{mode_tag}")
+                             f"N_occ={tgt.num_element_occupy}  "
+                             f"(target n_tet={n_tet_target}, ratio={ratio:.2f}×)"
+                             f"{mode_tag}")
 
                         try:
                             if spheroid_mode:
@@ -333,6 +352,11 @@ def main():
                         cst["iters"         ][idx6] = int(res["iters"])
                         cst["converged"     ][idx6] = 1 if res["converged"] else 0
                         cst["solver_err"    ][idx6] = float(res["err"])
+                        # residual_history: NaN-pad to MAXITER-wide fixed length
+                        hist = np.full(MAXITER, np.nan, dtype=np.float64)
+                        eh = res["err_history"]
+                        hist[:eh.size] = eh
+                        cst["residual_history"][idx6 + (slice(None),)] = hist
                         h5.flush()
 
                         if res["converged"]:

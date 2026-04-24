@@ -45,7 +45,7 @@ from utils.rss_monitor import RSSMonitor
 # ── Settings (mirror VIEM run_lc_convergence.jl) ─────────────────────────────
 RNG_SEED    = 12345
 SOLVER_TOL  = 1e-5
-MAXITER     = 100
+MAXITER     = 200                            # matches run_paper_sweep.py (v0.7.6)
 A_EQ_CONV   = 0.1                            # CLAUDE.md §4 representative size
 DPL_LIST    = [10, 14, 17, 24, 34]           # CLAUDE.md §4
 SINGLE_ORIENT = np.array([[0.0, 0.0, 0.0]])  # ZYZ identity
@@ -104,7 +104,7 @@ def solve_one(shape, m_p_xyz, dpl, monitor, wl_0=WL_PAPER, m_m=M_M_PAPER):
     t_setup = time.time() - t0
 
     t0 = time.time()
-    X, iter_fin, err_fin = bl_gmres_mvp_fft(
+    X, iter_fin, err_fin, err_history = bl_gmres_mvp_fft(
         dd.lattice_n, dd.f, dd.lattice_address_in_target,
         dd.Au_til, dd.diag_A, dd.B,
         SOLVER_TOL, MAXITER,
@@ -141,6 +141,7 @@ def solve_one(shape, m_p_xyz, dpl, monitor, wl_0=WL_PAPER, m_m=M_M_PAPER):
         "iters":   int(iter_fin + 1),     # 1-based count
         "converged": converged,
         "err":     float(err_fin),
+        "err_history": err_history,
         "t_setup": float(t_setup),
         "t_solve": float(t_solve),
         "t_total": float(t_total),
@@ -228,6 +229,12 @@ def write_convergence_h5(path, shape, material, m_p_xyz, results, mie):
         c.create_dataset("t_solve",    data=t_solve)
         c.create_dataset("t_total",    data=t_total)
         c.create_dataset("peak_rss_bytes", data=peak_rss)
+        # residual_history: (n_dpl, MAXITER) float64, NaN-padded
+        hist = np.full((len(results), MAXITER), np.nan, dtype=np.float64)
+        for i, r in enumerate(results):
+            eh = r["err_history"]
+            hist[i, :eh.size] = eh
+        c.create_dataset("residual_history", data=hist)
         c.create_dataset("C_abs",      data=C_abs)
         c.create_dataset("C_ext",      data=C_ext)
         c.create_dataset("C_sca",      data=C_sca)

@@ -25,9 +25,13 @@ import h5py
 # ──────────────────────────────────────────────────────────────────────
 #  Material constants  (all at λ₀ = 0.638 μm; CLAUDE.md §2)
 # ──────────────────────────────────────────────────────────────────────
-N_LOW  = 1.5  + 0.01j                # low-index dielectric
-N_HIGH = 3.17 + 0.16j                # high-index dielectric
+N_LOW  = 1.5  + 0.01j                # n15 — low-index dielectric
+N_20   = 2.0  + 0.0j                 # n20 — mid-index dielectric (non-absorbing,
+                                     #       paper "high"; replaced n317 for
+                                     #       DDA convergence in v0.7.6)
 N_AU   = 0.17525 + 3.4830j           # Au, Johnson & Christy 1972 @ 0.638 μm
+# Retained for reference / backward-compat of historical n317 HDF5 files:
+N_HIGH = 3.17 + 0.16j                # n317 — legacy high-index (superseded by n20)
 
 WL_PAPER  = 0.638                    # vacuum wavelength [μm]
 M_M_PAPER = 1.0                      # vacuum background
@@ -48,6 +52,11 @@ A_EQ_AU   = [0.05, 0.10, 0.20]         # Au only (≤ 0.2 μm); a_eq=0.5 dropped
 N_ALPHA_DEFAULT = 4
 N_BETA_DEFAULT  = 5
 N_GAMMA_DEFAULT = 5
+
+# Hard-wired block-Krylov maxiter matching run_paper_sweep.py and VIEM
+# (v0.7.6, 2026-04-24: bumped 100 → 200 for heavier cases; see CLAUDE.md §7.5).
+# residual_history is NaN-padded to this width.
+MAXITER_DEFAULT = 200
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -238,6 +247,13 @@ def create_paper_h5(filename,
             "1 if solver reached tol, 0 otherwise")
         _ds(cst, "solver_err",     shape_cond, np.float64,
             "final relative residual ‖B − A X‖_F / ‖B‖_F at termination")
+        # Residual history: fixed-width (MAXITER) NaN-padded per-iter residuals.
+        # MAXITER is hard-wired to 100 to match run_paper_sweep.py / VIEM.
+        shape_cond_hist = shape_cond + (MAXITER_DEFAULT,)
+        _ds(cst, "residual_history", shape_cond_hist, np.float64,
+            "per-iteration relative residual, NaN-padded to length MAXITER "
+            "(entry [...,k] is the residual after iteration k+1; NaN if "
+            "k+1 > iter_fin). Enables convergence-profile figures.")
 
     print(f"Created {filename}")
     print(f"  shape_kind: {shape_kind}  "

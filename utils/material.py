@@ -11,8 +11,9 @@ import numpy as np
 WAVELENGTH_UM = 0.638
 
 MATERIALS = {
-    "low":  1.5   + 0.01j,      # low refractive index reference
-    "high": 3.17  + 0.16j,      # high refractive index reference
+    "low":  1.5   + 0.01j,      # low refractive index reference (n15)
+    "n20":  2.0   + 0.0j,       # mid index, non-absorbing (paper "high", v0.7.6+)
+    "high": 3.17  + 0.16j,      # legacy high refractive index (n317, superseded)
     "Au":   0.17525 + 3.4830j,  # Johnson & Christy 1972 at 638 nm
 }
 

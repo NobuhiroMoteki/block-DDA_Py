@@ -60,15 +60,14 @@ For a detailed description of the theory and algorithms, see [docs/theory_note.p
 
 block-DDA_Py is developed and tested with **Python 3.13 on Linux (WSL2)**.
 
-#### 1. Clone the repository
+For step-by-step instructions on building the runtime environment from scratch on either a **Windows machine (WSL2 + Ubuntu)** or a **native Linux (Ubuntu)** machine, see [installation_guide.md](installation_guide.md).
+
+### Quick start (existing Linux/WSL2 environment with `uv` already installed)
+
 ```sh
 git clone https://github.com/NobuhiroMoteki/block-DDA_Py.git
 cd block-DDA_Py
-```
-
-#### 2. Create a virtual environment and install dependencies
-```sh
-uv venv
+uv venv --python 3.13
 uv pip install -r requirements.txt
 ```
 

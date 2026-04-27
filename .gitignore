@@ -32,3 +32,6 @@ old/
 # Large binary data
 *.h5
 *.hdf5
+
+# Paper-production results — committed for reproducibility (~1 MB total)
+!dda_results/paper/*.hdf5

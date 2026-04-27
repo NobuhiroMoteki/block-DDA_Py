@@ -71,7 +71,9 @@ _A_EQ_INDEX_AU   = {0.05: 0, 0.10: 1, 0.20: 2}
 # ──────────────────────────────────────────────────────────────────────
 
 _MATERIAL_BY_M_P = {
-    # key is (round(n_r, 4), round(n_i, 4))
+    # key is (round(n_r, 5), round(n_i, 5)) — 5 digits needed because
+    # 0.17525 stored as float64 is 0.17524999999999996, which rounds to
+    # 0.1752 at 4 digits but correctly to 0.17525 at 5.
     (1.5,    0.01):   "n15",
     (2.0,    0.0):    "n20",
     (3.17,   0.16):   "n317",          # legacy, not in VIEM_N_TET_TABLE
@@ -82,7 +84,7 @@ _MATERIAL_BY_M_P = {
 def material_label(m_p_value):
     """Map a scalar complex refractive index to the paper label (n15 / n20 / Au)."""
     z = complex(m_p_value)
-    key = (round(z.real, 4), round(z.imag, 4))
+    key = (round(z.real, 5), round(z.imag, 5))
     if key in _MATERIAL_BY_M_P:
         return _MATERIAL_BY_M_P[key]
     raise ValueError(f"unknown material m_p={m_p_value} "

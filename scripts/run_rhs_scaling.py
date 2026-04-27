@@ -235,8 +235,18 @@ def main():
                         for (name, fn) in METHODS:
                             _log(f"  method = {name}")
                             for iL, L in enumerate(L_LIST):
-                                m = measure_one(tgt, wl_0_op, m_m_op, fn, L)
                                 r = results[name]
+                                # Skip degenerate case: RHS count exceeds DOF
+                                # (block-QR becomes rank-deficient when L > 3·N_occ).
+                                if L > 3 * tgt.num_element_occupy:
+                                    _log(f"    L={L:<3d}  skipped (L > 3·N_occ"
+                                         f"={3*tgt.num_element_occupy}, degenerate)")
+                                    r["iters"]    [iL,i_rv,i_bc,i_ab,i_bt] = 0
+                                    r["converged"][iL,i_rv,i_bc,i_ab,i_bt] = 0
+                                    r["t_total"]  [iL,i_rv,i_bc,i_ab,i_bt] = np.nan
+                                    r["t_per"]    [iL,i_rv,i_bc,i_ab,i_bt] = np.nan
+                                    continue
+                                m = measure_one(tgt, wl_0_op, m_m_op, fn, L)
                                 r["iters"]    [iL,i_rv,i_bc,i_ab,i_bt] = m["iters"]
                                 r["converged"][iL,i_rv,i_bc,i_ab,i_bt] = 1 if m["converged"] else 0
                                 r["t_total"]  [iL,i_rv,i_bc,i_ab,i_bt] = m["t_total"]

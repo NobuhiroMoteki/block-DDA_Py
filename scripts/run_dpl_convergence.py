@@ -20,7 +20,7 @@ Usage:
                                   <shape> <material>
 
     shape    ∈ {sphere, oblate, gre}
-    material ∈ {n15, n317, Au}
+    material ∈ {n15, n20, Au}  (n317 legacy も accept)
 """
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ from bl_dda.scatterer import Target, IncidentField, DiscreteDipoles
 from bl_krylov.bl_krylov import bl_gmres_mvp_fft
 from analytical_scattering_theories.homogeneous_sphere import mie_compute_q_and_s
 from dda_results.paper._common import (
-    N_LOW, N_HIGH, N_AU, WL_PAPER, M_M_PAPER,
+    N_LOW, N_20, N_HIGH, N_AU, WL_PAPER, M_M_PAPER,
 )
 from utils.rss_monitor import RSSMonitor
 
@@ -57,6 +57,7 @@ SHAPE_PARAMS = {
 }
 MATERIAL_M_P = {
     "n15":  N_LOW,
+    "n20":  N_20,
     "n317": N_HIGH,
     "Au":   N_AU,
 }

@@ -5,8 +5,8 @@ sweeps. Mirrors `block-VIEM.jl/docs/paper_simulation_conditions_viem.md` for
 direct shape × material × N_DOF comparison between the two solvers.
 
 - **Repository**: `~/Python/block-DDA_Py`
-- **Code version**: v0.7.6 (tag pending, pairs with VIEM v0.7.6 `d2bceaf`)
-- **Authoring date**: 2026-04-24
+- **Code version**: v0.7.7 (tag pending, pairs with VIEM v0.7.6 `d2bceaf`)
+- **Authoring date**: 2026-04-24 (last revised 2026-04-27)
 - **Sister project**: [block-VIEM.jl](file:///home/moteki/Julia/block-VIEM.jl) (paper-symmetric)
 
 ---
@@ -484,7 +484,8 @@ VIEM 側との対称項目 (要同期):
 | v0.7.3 | `38aeaafc` | spheroid sweep grid ranges, `.h5` gitignore |
 | v0.7.4 | `dbadc075` | interactive notebook for spheroid sweep |
 | v0.7.5 | `0b73abd7` | paper-production infrastructure + DDA↔VIEM cost parity (`/target/cost/` group), `bl_gmres_mvp_fft` / `bl_bicgstab_mvp_fft` 前処理なし変種追加 |
-| **v0.7.6** | (pending) | **material n317 → n20 差替**, **residual_history** (/target/cost/), **incremental block-Givens QR** (GMRES O((kL)³) → O(kL²+L³), L=100 で 6× 高速化), **MAXITER 200**, **BiCGSTAB scope 外**, **auto-dpl** (VIEM n_tet に 1.5× 以内で per-slot dpl 調整) |
+| v0.7.6 | `190ab55f` | material n317 → n20 差替, residual_history (/target/cost/), incremental block-Givens QR (GMRES O((kL)³) → O(kL²+L³), L=100 で 6× 高速化), MAXITER 200, BiCGSTAB scope 外, auto-dpl (VIEM n_tet に 1.5× 以内で per-slot dpl 調整) |
+| **v0.7.7** | (pending) | **paper-production sweep 全 run 完了** (12 §11.2 + 9 §11.4 + 3 §11.5、HDF5 を repo 同梱)、**Au material_label の float64 精度修正** (4→5 桁、`0.17524999...` 一致対応)、**run_dpl_convergence の n20 サポート追加**、**run_rhs_scaling の `L > 3·N_occ` ガード**（degenerate QR 回避）、**plot_paper_results.ipynb スケルトン追加** (Q_X / CAS-v2 振幅 / DDA↔VIEM 誤差 / dpl-lc 収束 / RHS-scaling / cost summary) |
 
 ---
 

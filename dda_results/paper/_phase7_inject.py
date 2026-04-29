@@ -165,6 +165,18 @@ from matplotlib.patches import Patch  # noqa: E402  — local to Phase 7
 PHASE7_RESIDUAL_THRESHOLD = 1.0e-3
 PHASE7_SHAPES = ['oblate', 'gre']
 
+# Fixed panel limits — uniform across all panels via sharex/sharey.
+PHASE7_XLIM = (1.0e3, 3.0e5)
+PHASE7_YLIM = (1.0e-4, 2.0e-2)
+
+# Slope-(-2/3) reference grid: 6 parallel lines passing through
+# (PHASE7_SLOPE_REF_X, ref_y) for ref_y in PHASE7_SLOPE_REF_YS, with
+# slope -2/3 in log-log. Identical on every panel (no per-panel LSQ
+# fit) so the same reference grid frames every dataset.
+PHASE7_SLOPE_REF_X  = 1.0e4
+PHASE7_SLOPE_REF_YS = (1.0e-4, 10.0**(-3.5), 1.0e-3, 10.0**(-2.5),
+                        1.0e-2, 10.0**(-1.5))  # 0.5-decade spacing
+
 # Single observable for fig 4 (paper editorial decision): |S_fw_θ| is
 # the polarimetric forward amplitude that the CAS-v2 retrieval consumes
 # directly — the headline observable of this paper. fig 1 already
@@ -248,8 +260,12 @@ def _phase7_kind_to_scalar(v, kind):
 
 
 def plot_phase7(save=True):
+    # figsize matched to fig 1's per-panel aspect: fig 1 uses (11, 4) for
+    # 1x3 -> ~3.67 x 4 per panel. Doubling the height for 2x3 here gives
+    # the same per-panel aspect; h_pad in tight_layout (below) tightens
+    # the row gap.
     fig, axes = plt.subplots(len(PHASE7_SHAPES), len(MATERIALS),
-                              figsize=(11.5, 6.5),
+                              figsize=(11, 8),
                               sharex=True, sharey=True)
     fig.suptitle(r'VIEM $\\ell_c$ convergence on non-sphere production shapes '
                   r'at $r_{\\rm ve}=0.1\\,\\mu$m, single orientation '
@@ -394,29 +410,22 @@ def plot_phase7(save=True):
                                         marker='x', markersize=8, mew=1.4,
                                         color=PHASE7_TMM_COLOR, zorder=4)
 
-                # ----- Slope guide anchored on Richardson > TMM > coarsest.
-                # Richardson by construction satisfies the assumed h^2 rate
-                # between its 2nd-finest and finest meshes (X_inf is built
-                # from exactly those two points), so a -2/3 line anchored on
-                # the Richardson 2nd-finest point is guaranteed to pass
-                # through both Richardson markers. Anchoring on TMM instead
-                # makes the line drift below the Richardson curve in
-                # regimes where TMM convergence is non-monotonic
-                # (e.g. oblate x Au plasmonic, where eps_T at finest exceeds
-                # eps_T at 2nd-finest) — the line then passes through
-                # neither Richardson nor finest TMM. Hence Richardson first.
+                # ----- Slope -2/3 reference grid: 6 parallel guide lines
+                # passing through (PHASE7_SLOPE_REF_X, ref_y) for each
+                # ref_y in PHASE7_SLOPE_REF_YS (0.5-decade spaced).
+                # Identical on every panel — no per-panel LSQ — so the
+                # same reference frames every dataset uniformly.
+                # Drawn across the full panel x range PHASE7_XLIM (data
+                # range plus generous margin to either side).
                 if not anchor_set:
-                    eps_anchor = None
-                    if eps_r is not None and np.isfinite(eps_r[i_2nd]) and eps_r[i_2nd] > 0:
-                        eps_anchor = float(eps_r[i_2nd])
-                    elif eps_t is not None and np.isfinite(eps_t[i_2nd]) and eps_t[i_2nd] > 0:
-                        eps_anchor = float(eps_t[i_2nd])
-                    if eps_anchor is not None:
-                        xs = np.array([x_n.min(), x_n.max()])
-                        ys = eps_anchor * (xs / x_n[i_2nd]) ** (-2.0 / 3.0)
-                        ax.plot(xs, ys, ls=':', color='k', lw=0.9, alpha=0.6,
-                                zorder=0)
-                        anchor_set = True
+                    xs = np.array(PHASE7_XLIM, dtype=float)
+                    a_factor = PHASE7_SLOPE_REF_X ** (2.0/3.0)
+                    for ref_y in PHASE7_SLOPE_REF_YS:
+                        a_k = ref_y * a_factor
+                        ax.plot(xs, a_k * xs ** (-2.0/3.0),
+                                ls=':', color='k', lw=0.7,
+                                alpha=0.35, zorder=0)
+                    anchor_set = True
 
             if not anchor_set:
                 xs = np.array([x_n.min(), x_n.max()])
@@ -481,10 +490,11 @@ def plot_phase7(save=True):
         Patch(facecolor='gray', alpha=0.18, edgecolor='none',
                 label=r'production sweep $n_{\\rm tet}$ at $r_{\\rm ve}=0.1$'),
     ]
-    # x-axis lower bound clipped to 10^3 (the smallest sweep n_tet = 405
-    # at oblate × n15 is below the bound and gets cropped out — it is far
-    # from the asymptotic regime anyway). sharex=True propagates.
-    axes[0, 0].set_xlim(left=1e3)
+    # Fixed panel limits propagated via sharex/sharey: x range pulled
+    # out to 3e5 so the slope-(-2/3) reference grid extends past the
+    # data range (max sweep n_tet = 109 692 = 1.1e5 on oblate × Au).
+    axes[0, 0].set_xlim(*PHASE7_XLIM)
+    axes[0, 0].set_ylim(*PHASE7_YLIM)
 
     # GRE × Au panel below oblate × Au is hidden, so oblate × Au would
     # otherwise inherit the sharex=True suppression of its tick labels and
@@ -495,7 +505,7 @@ def plot_phase7(save=True):
     fig.legend(handles=handles_ref + handles_extra,
                 ncol=3, loc='lower center', bbox_to_anchor=(0.5, -0.07),
                 fontsize=8)
-    plt.tight_layout(rect=(0, 0.06, 1, 0.97))
+    plt.tight_layout(rect=(0, 0.05, 1, 0.97), h_pad=0.3)
     if save:
         save_fig(fig, 'fig4_lc_convergence_nonsphere')
     plt.show()

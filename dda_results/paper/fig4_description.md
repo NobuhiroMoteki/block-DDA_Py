@@ -275,22 +275,31 @@ methods. With only one observable the line **colour** now denotes the
   The empty bottom-right panel is hidden via `ax.set_visible(False)`
   rather than annotated with a "plot skipped" message — paper-style
   decision to drop empty panels entirely.
-- **Slope $-2/3$ guide**: thin black dotted line, anchored at the
-  **2nd-finest** point of the **Richardson** curve, falling back to TMM
-  only if Richardson is undefined (which never happens in practice).
-  Drawn behind the data (`zorder = 0`). The Richardson anchor is chosen
-  because $X_\infty^{\rm Rich}$ is constructed from exactly the
-  2nd-finest and finest meshes assuming $h^2$, so the slope line
-  **passes exactly through both Richardson markers by construction**.
-  Anchoring on TMM instead would drift the line below the Richardson
-  curve in regimes where TMM convergence is non-monotonic (e.g.
-  oblate × Au plasmonic, where $\varepsilon_{\rm TMM}$ at the finest
-  mesh exceeds $\varepsilon_{\rm TMM}$ at the 2nd-finest — the
-  unconverged-residual MAXITER stalls perturb the TMM-relative error
-  away from the underlying SWG h² rate that Richardson recovers).
-  The visual test is whether the coarser points fall on the same line
-  (= asymptotic regime reached) or above it (= leading $h^2$ term not
-  yet dominant).
+- **Slope $-2/3$ reference grid**: six thin black dotted lines,
+  parallel in log–log, **identical on every panel** (no per-panel
+  fitting). Each line passes through the fixed reference point
+  $(n_{\rm tet}, \varepsilon) = (10^4,\,\varepsilon^{\rm ref})$ for one
+  of $\varepsilon^{\rm ref}\in\{10^{-4},\,10^{-3.5},\,10^{-3},\,
+  10^{-2.5},\,10^{-2},\,10^{-1.5}\}$ (= `PHASE7_SLOPE_REF_YS`,
+  half-decade spacing) — i.e. line equation
+  $y(x) = \varepsilon^{\rm ref}\,(x/10^4)^{-2/3}$. Lines are drawn
+  across the full fixed panel x-range
+  $\text{PHASE7\_XLIM}=(10^3,\,3\times 10^5)$, extending past the
+  Richardson data (max sweep $n_{\rm tet}=1.1\times 10^5$ on
+  oblate × Au) so the grid frames the panel uniformly. `lw = 0.7`,
+  `alpha = 0.35`, `zorder = 0`.
+
+  The grid is identical across all five visible panels because it
+  depends only on the global constants $(\text{ref\_x},\text{ref\_ys})$,
+  not on per-panel data — the reader sees the same $-2/3$ tilt
+  everywhere and can read the data's slope by comparing against the
+  shared backdrop.
+  - non-Au panels: Richardson is nearly pure $h^2$ and the data lies
+    along one of the grid lines, validating the assumed rate.
+  - oblate × Au: pre-asymptotic convergence is **faster** than $h^2$
+    in the plasmonic regime, so the data crosses the grid diagonally
+    — the visible slope is steeper than $-2/3$, which the grid makes
+    immediately obvious.
 - **Horizontal guides**: $\varepsilon = 10^{-2}$ and $10^{-3}$
   (gray dotted), same as fig 1.
 - Both axes log-scaled. **x-axis lower bound clipped to $10^3$** via
@@ -308,9 +317,12 @@ methods. With only one observable the line **colour** now denotes the
   xlabel explicitly with `axes[0,2].set_xlabel('Number of vol. elements')`,
   so oblate × Au reads as a fully self-contained panel.
 - Inside-pointing mirror ticks on all four sides.
-- Layout: `figsize=(11.5, 6.5)`, `sharex=sharey=True`, suptitle on top
+- Layout: `figsize=(11, 8)`, `sharex=sharey=True`, suptitle on top
   with the relative-error formula spelled out in inline LaTeX
-  ($|S_{\rm fw}^{\theta}|$ substituted for the generic $X$).
+  ($|S_{\rm fw}^{\theta}|$ substituted for the generic $X$). The
+  per-panel aspect (~$3.67 \times 4$) matches fig 1's `(11, 4)` 1×3
+  layout. Row gap is tightened with `tight_layout(h_pad=0.3)`
+  (default is ~1.0 in font-size units).
 - **y-axis label** also substitutes $X \to |S_{\rm fw}^{\theta}|$
   explicitly, since a separate observable-colour legend entry would be
   redundant with a single observable.

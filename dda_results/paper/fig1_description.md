@@ -9,7 +9,7 @@ Quantify how the DDA and VIEM solvers' relative error against the **Mie
 exact reference** (sphere only) shrinks as the spatial discretization is
 refined. The x-axis is the number of volume elements ($N_{\rm occ}$ for
 DDA, $n_{\rm tet}$ for VIEM); the y-axis is $|X - X^{\rm Mie}| /
-|X^{\rm Mie}|$ for four observables. Used to certify that both solvers
+|X^{\rm Mie}|$ for two observables. Used to certify that both solvers
 converge to Mie at the expected polynomial-in-h rates and to bracket the
 discretization error of the production sweep (fig 3).
 
@@ -17,7 +17,7 @@ discretization error of the production sweep (fig 3).
 
 - **One figure file**: `fig1_dpl_lc_convergence.{png,pdf}`.
 - 1 × 3 panels = 3 materials (n15, n20, Au).
-- Within each panel: 4 observables × 2 solvers = up to 8 lines (Au panel: only VIEM lines; n20 panel omits $Q_{\rm abs}$ since $m_p$ is purely real).
+- Within each panel: 2 observables × 2 solvers = up to 4 lines (Au panel: only VIEM lines; DDA stalls at MAXITER on Au, see §5).
 - `sharex=True, sharey=True`: identical axis range across panels.
 
 ## 3. Convergence-study configuration
@@ -127,25 +127,68 @@ sufficient.
 
 ### 3.6 Observables on the y-axis
 
-Per `CONV_OBS` in the Phase 4 cell of `plot_paper_results.ipynb`:
+Per `CONV_OBS` in the Phase 4 cell of `plot_paper_results.ipynb`. Two
+observables only — chosen for visual clarity and to demonstrate
+convergence universality across observable types (scalar
+cross-section vs polarimetric amplitude). Galerkin theory on the
+SWG / cubic-lattice basis predicts the same $h^2$ rate for every
+bounded linear functional, so two observables suffice; the prior
+4-observable layout (`Q_abs`, `S_bk` additionally) was found to
+clutter the panels without adding rate-universality information.
 
-| key | latex | kind | n20 |
+| key | latex | kind | role |
 | --- | --- | --- | --- |
-| `Q_ext`      | $Q_{\rm ext}$ | real | shown |
-| `Q_abs`      | $Q_{\rm abs}$ | real | **omitted** ($m_p$ purely real → $Q_{\rm abs}$ not meaningful) |
-| `S_fw_theta` | $\|S_{\rm fw}^{\theta}\|$ | mag | shown |
-| `S_bk`       | $\|S_{\rm bk}\|$ | mag | shown |
+| `Q_ext`      | $Q_{\rm ext}$            | real | scalar cross-section, universally familiar |
+| `S_fw_theta` | $\|S_{\rm fw}^{\theta}\|$ | mag  | headline polarimetric observable (CAS-v2 retrieval input) |
+
+`Q_abs` is dropped because the small Im $(m_p)$ on n15 makes it
+numerically noisy, and on n20 it is identically zero ($m_p$ purely
+real). `S_bk` is dropped as redundant with `S_fw_theta` for
+demonstrating amplitude-observable convergence universality on a
+sphere — neither would change the rate conclusion.
 
 Relative error: $\varepsilon = |X - X^{\rm Mie}| / |X^{\rm Mie}|$.
 
 ## 4. Per-panel display
 
-- **DDA**: filled circle, solid line, color by observable (C0 = $Q_{\rm ext}$, C1 = $Q_{\rm abs}$, C2 = $|S_{\rm fw}^{\theta}|$, C3 = $|S_{\rm bk}|$).
+- **DDA**: filled circle, solid line, color by observable (C0 blue = $Q_{\rm ext}$, C2 green = $|S_{\rm fw}^{\theta}|$).
 - **VIEM**: open square, dashed line, same color per observable.
-- Horizontal guide lines at $\varepsilon = 10^{-2}$ and $10^{-3}$ (gray dotted).
+- **Slope reference grids** (gray, drawn behind the data):
+  - **slope $-2/3$** dashed — VIEM $h^2$ rate
+    ($\varepsilon \propto n_{\rm tet}^{-2/3}$).
+  - **slope $-1/3$** solid — DDA $h$ rate
+    ($\varepsilon \propto N_{\rm dip}^{-1/3}$, since DDA
+    polarisability error is $\mathcal{O}(h)$ not $\mathcal{O}(h^2)$).
+  - Five lines per slope, half-decade spaced, passing through
+    $(n_{\rm tet/dip}, \varepsilon) = (10^3, \varepsilon^{\rm ref})$
+    for $\varepsilon^{\rm ref} \in
+    \{10^{-3},\,10^{-2.5},\,10^{-2},\,10^{-1.5},\,10^{-1}\}$
+    (= `PHASE4_SLOPE_REF_YS`).
+  - Identical on every panel; same drawing style as fig 4's
+    slope-$-2/3$ grid.
+  - Replaces the previous horizontal guide lines at
+    $\varepsilon = 10^{-2}$ and $10^{-3}$ — the slope grids subsume
+    that role and additionally encode the rate.
 - **Production sweep marker** (added 2026-04-29): a thin gray vertical band per panel, centered on the geometric mean of (DDA $N_{\rm occ}^{\rm prod}$, VIEM $n_{\rm tet}^{\rm prod}$) at $r_{\rm ve}=0.1$, with fixed log-decade half-width = 0.075 dec so visual width is consistent across panels. Both DDA (`dpl_for_slot` auto) and VIEM (`adaptive_lc`) chose the production lattice automatically per slot.
 - Inside-pointing mirror ticks on all four sides (added 2026-04-29).
 - Both axes log-scaled.
+- **Layout**: `figsize=(11, 5.8)` for the 1×3 grid, with each axis
+  forced to a unit box-aspect via `ax.set_box_aspect(1.0)` so the
+  panels render as **squares** — matching fig 4's per-panel aspect.
+  The taller-than-wide aspect of the previous `figsize=(11, 5)`
+  layout has been corrected.
+- **Fixed x-axis range** $n \in (3\times 10^1,\,10^5)$ via
+  `axes[0].set_xlim(...)`. Covers the full DDA / VIEM sweep on
+  every panel — DDA n15 starts at $N_{\rm dip}\approx 70$ at the
+  coarsest dpl, which sits well above the lower bound, while VIEM
+  Au reaches $n_{\rm tet}\approx 7.5\times 10^4$ which fits below
+  the upper bound. The slope grids extend to either edge of this
+  range, framing the data uniformly.
+- **Fixed y-axis range** $\varepsilon \in (5\times 10^{-4},\,
+  10^{-1})$. Lower bound just below the finest VIEM Mie residual
+  on Au (~$1.5\times 10^{-3}$) and upper bound just above the
+  coarsest DDA residual on n20 (~$7\times 10^{-2}$), framing the
+  data with ~$0.5$ decades of margin on each side.
 
 ## 5. Au stagnation (axis-aligned plus cubic lattice)
 
@@ -198,6 +241,14 @@ power-law slope $s$ of $\varepsilon \propto N_{\rm vol}^{\,s}$:
 (Au is excluded — every dpl / lc value stalled on the DDA side, and the VIEM convergence study likewise reaches the LSP-stress regime, so the slopes are not informative of asymptotic behaviour.)
 
 ### 6.1 VIEM — universal $\varepsilon \propto n_{\rm tet}^{-2/3}$
+
+The slope table above is computed from the **raw HDF5 convergence
+sweep** for all four observables (`Q_ext`, `Q_abs`, `S_fw_theta`,
+`S_bk`), even though fig 1 itself plots only `Q_ext` and
+`|S_fw_theta|` for visual clarity (see §3.6). The full 4-observable
+slope panel is the underlying empirical evidence for the
+rate-universality claim; the figure shows the two most
+paper-relevant of those four.
 
 All four observables for n15 and n20 collapse onto **slopes $-0.62$ to $-0.70$**, tightly bracketing the theoretical value $-2/3 \approx -0.667$. Within the convergence sweep this is one universal power law independent of observable and material.
 

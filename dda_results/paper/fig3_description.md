@@ -1,0 +1,136 @@
+# Figure 3 — Solver vs exact reference (per orientation, per $r_{\rm ve}$)
+
+This document records the exact computation conditions behind the
+`fig3_scatter_*.{png,pdf}` files in `dda_results/paper/figures/`.
+
+## 1. Purpose
+
+For each (shape, material, $r_{\rm ve}$) slot, compare the converged DDA
+and VIEM observables against an exact analytical / semi-analytical
+reference at the same orientation, on a y = x plot. Used to certify that
+both numerical solvers reproduce the exact scattering amplitudes within
+solver tolerance plus discretization error.
+
+## 2. Layout
+
+- 4 observables × 4 $r_{\rm ve}$ values = **16 figure files**:
+  `fig3_scatter_{C_ext, S_fw_theta_abs, S_fw_phi_abs, S_bk_abs}_rve{0.05, 0.1, 0.2, 0.4}.{png,pdf}`
+- Each file: 2 × 2 panels = 2 materials (n15 / n20) × 2 shapes (oblate / doublet).
+- Au row removed: production-sweep DDA / VIEM both stalled at every $r_{\rm ve}$.
+- $r_{\rm ve} = 0.4$ Au not produced in the sweep at all.
+
+## 3. Production sweep configuration
+
+### 3.1 Particle slots
+
+- Materials $m_p$: `n15` ($1.5+0.01i$), `n20` ($2.0+0.0i$), `Au` ($0.17525+3.483i$, J&C 1972 @ 0.638 μm).
+- Shapes: `sphere`, `oblate` (b/c=3), `gre` ($\beta_{\rm gre}=0.2$), `doublet` (gap = 0.1·$R_{\rm monomer}$).
+- $r_{\rm ve}$: $\{0.05, 0.10, 0.20, 0.40\}$ μm for n15, n20; $\{0.05, 0.10, 0.20\}$ μm for Au.
+- Wavelength: $\lambda_0 = 0.638$ μm, host $m_m = 1$.
+
+### 3.2 Orientations (Euler ZYZ)
+
+- Spheroid mode (sphere, oblate, doublet): $\alpha = \gamma = 0$, only $N_\beta = 5$ values of $\beta$ solved
+  ($\cos\beta$ equal-area in $(-1, 1)$, i.e. $\cos\beta \in \{\pm 0.8,\, \pm 0.4,\, 0\}$). The full
+  $N_\alpha N_\beta N_\gamma = 4 \cdot 5 \cdot 5 = 100$ block is filled by analytical
+  $\exp(2i\alpha)$ rotation per CLAUDE.md §6.2.
+- GRE: full 100-orientation grid (no symmetry exploit).
+- Block size $L$: 5 in spheroid mode, 100 for GRE.
+
+### 3.3 Solver
+
+- **Method**: block-GMRES, unpreconditioned (`bl_krylov.bl_gmres_mvp_fft` for DDA, `BlockVIEM.block_gmres` for VIEM).
+- **Tolerance**: $\|R\|_F / \|B\|_F < 10^{-5}$.
+- **Maximum iterations**: 200.
+- **MVP acceleration**: FFT-based Goodman algorithm on DDA side; AIM on VIEM side.
+
+### 3.4 Lattice resolution — "auto" definition
+
+DDA and VIEM use **different mechanisms** to choose the lattice but are
+calibrated to land on the same number of volume elements:
+
+#### DDA — "auto" via `dpl_for_slot`
+
+[`utils/dpl_calibration.py:145`](../../utils/dpl_calibration.py):
+```python
+def dpl_for_slot(shape, material, a_eq, m_p_xyz, wl_0=0.638):
+    n_tet = get_n_tet_target(shape, material, a_eq)        # look up VIEM_N_TET_TABLE
+    return dpl_for_target_n_occ(n_tet, a_eq, m_p_xyz, wl_0)
+```
+
+The inversion formula ([`dpl_calibration.py:133`](../../utils/dpl_calibration.py)):
+$$
+\text{dpl} \;=\; \frac{\lambda_0}{|m_p|_{\max}} \,
+                  \left( \frac{n_{\rm tet}^{\rm VIEM}}{V} \right)^{\!1/3},
+\qquad V = \tfrac{4\pi}{3}\, a_{\rm eq}^{3}.
+$$
+
+The DDA lattice spacing is then $d = \lambda_0 / (|m_p|_{\max}\cdot \text{dpl})$, so
+volume preservation $(N_{\rm occ}\cdot d^3 \approx V)$ gives
+$N_{\rm occ}^{\rm DDA} \approx n_{\rm tet}^{\rm VIEM}$ — **DDA-VIEM cost parity**.
+
+The target table `VIEM_N_TET_TABLE` ([`dpl_calibration.py:40`](../../utils/dpl_calibration.py))
+is a v0.7.6 (2026-04-24) snapshot of VIEM `estimate_cost.jl` outputs —
+i.e. the VIEM `adaptive_lc` mesh sizes for every paper slot.
+
+#### VIEM — "adaptive" via `adaptive_lc`
+
+[`BlockVIEM/src/gre_mesh.jl:84`](../../../../Julia/block-VIEM.jl/src/gre_mesh.jl):
+```julia
+function adaptive_lc(p; wl_0, m_p_max, N_pw=10)
+    candidates = [
+        wl_0 / (m_p_max · N_pw),         # (1) wavelength-based
+        c / 3,                            # (2) smallest semi-axis / 3
+        0.3·c / 3   if p.beta > 0,        # (3) GRE correlation length / 3
+    ]
+    return minimum(candidates)
+end
+```
+where $c$ is the smallest semi-axis of the base ellipsoid and `N_pw` = 10
+(at least 10 mesh elements per wavelength inside the particle).
+
+For sphere × Au at $r_{\rm ve}=0.10$, this gives `lc` at the wavelength
+limit, producing $n_{\rm tet} = 3673$, which is the same value the DDA
+auto-dpl logic targets for that slot.
+
+### 3.5 Exact reference per shape
+
+| Shape | Producer | File pattern | Schema |
+| --- | --- | --- | --- |
+| oblate | `~/Julia/TransitionMatrices.jl` (EBCM) | `tmm_oblate_<mat>.hdf5` | see [`exact_reference_schema.md`](exact_reference_schema.md) |
+| doublet | `~/Julia/MSTMforCAS.jl` (multi-sphere T-matrix) | `mstm_doublet_<mat>.hdf5` | same |
+| sphere | Mie (analytical) | scalar embedded in production HDF5 | — |
+| gre | none (no exact reference) | — | — |
+
+For the y = x scatter plots in fig 3, only oblate and doublet panels are
+populated. The sphere row would be trivially diagonal (each solver's own
+Mie reference is its own scalar), so it is omitted.
+
+### 3.6 Per-panel display
+
+- DDA: filled blue circle (with $\beta$-dependent marker shape).
+- VIEM: open orange circle (same $\beta$-marker).
+- $\beta$ markers: 5 distinct shapes for $\cos\beta \in \{+0.8, +0.4, 0, -0.4, -0.8\}$.
+- y = x dashed line.
+- Each panel carries `DDA  max rel. err. = +X.XX%` / `VIEM max rel. err. = +Y.YY%`
+  in the upper-left, where the value is the signed $(solver - exact)/exact$ at
+  the orientation with the largest $|\cdot|$.
+- Axis range: per-row unified across (oblate, doublet) at the same material;
+  $|S_{\rm fw}^{\theta}|$ and $|S_{\rm fw}^{\phi}|$ at the same $r_{\rm ve}$
+  share the same row range so $\theta$ vs $\phi$ are directly comparable.
+- Tick labels: 2-sig-fig mantissas, single consolidated $\times 10^N$ exponent
+  per axis (custom formatter in the Phase 3 cell of the notebook).
+
+### 3.7 Output
+
+- 16 PNG / 16 PDF files in `dda_results/paper/figures/` named
+  `fig3_scatter_{key}_rve{a_eq}.{png,pdf}`.
+- All raster outputs are < 2000 px in both dimensions (savefig.dpi = 150).
+
+## 4. Source code
+
+- DDA production sweep: [`scripts/run_paper_sweep.py`](../../scripts/run_paper_sweep.py)
+- VIEM production sweep: `~/Julia/block-VIEM.jl/viem_results/run_viem.jl` (`SOLVER_METHOD = :aim_gmres`)
+- Plotting: Phase 3 cell of [`plot_paper_results.ipynb`](plot_paper_results.ipynb)
+- Exact-reference schema: [`exact_reference_schema.md`](exact_reference_schema.md)
+- Loaders: [`_plot_io.py`](_plot_io.py)

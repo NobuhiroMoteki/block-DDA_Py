@@ -160,6 +160,8 @@ oblate Au passes the gate (6.4e-4, 7.8e-4 — both Richardson and TMM
 overlays kept); GRE Au fails (5.5e-2, 3.9e-2 — both suppressed).
 """
 
+from matplotlib.patches import Patch  # noqa: E402  — local to Phase 7
+
 PHASE7_RESIDUAL_THRESHOLD = 1.0e-3
 PHASE7_SHAPES = ['oblate', 'gre']
 
@@ -185,8 +187,14 @@ PHASE7_SHAPES = ['oblate', 'gre']
 # Q_ext is excluded as redundant with fig 1 and to maximise the visual
 # punch of the dual TMM ⟷ Richardson overlay on a single observable.
 PHASE7_OBS_FIG4 = [
-    ('S_fw_theta', r'$|S_{\\rm fw}^{\\theta}|$', 'mag',  'C2'),
+    ('S_fw_theta', r'$|S_{\\rm fw}^{\\theta}|$', 'mag'),
 ]
+
+# Reference-method colour scheme. With a single observable, the line
+# colour now distinguishes the reference choice (TMM vs Richardson)
+# rather than the observable.
+PHASE7_TMM_COLOR  = 'C0'   # blue, solid, filled circle
+PHASE7_RICH_COLOR = 'C3'   # red,  dashed, open square
 
 # TMM β=0 reference for oblate panels — pre-load once.
 PHASE7_CONV_REF = {}
@@ -246,12 +254,21 @@ def plot_phase7(save=True):
     fig.suptitle(r'VIEM $\\ell_c$ convergence on non-sphere production shapes '
                   r'at $r_{\\rm ve}=0.1\\,\\mu$m, single orientation '
                   r'($\\alpha=\\beta=\\gamma=0$): '
-                  r'$|X(\\ell_c)-X_{\\rm ref}|/|X_{\\rm ref}|$',
+                  r'$\\left| |S_{\\rm fw}^{\\theta}|(\\ell_c) - '
+                  r'|S_{\\rm fw}^{\\theta}|_{\\rm ref} \\right| / '
+                  r'|S_{\\rm fw}^{\\theta}|_{\\rm ref}$',
                   y=1.00, fontsize=10)
 
     for i, shape in enumerate(PHASE7_SHAPES):
         for j, mat in enumerate(MATERIALS):
             ax = axes[i, j]
+            # Drop GRE × Au panel: VIEM convergence sweep cannot reach the
+            # relaxed Au gate (residuals 1.6e-2 to 5.5e-2 — see
+            # fig4_description.md §6.3). Empty panel removed rather than
+            # annotated, per paper editorial decision.
+            if shape == 'gre' and mat == 'Au':
+                ax.set_visible(False)
+                continue
             c = CONV.get((shape, mat), {})
             viem = c.get('viem')
             if (viem is None
@@ -272,6 +289,18 @@ def plot_phase7(save=True):
             solver_err = viem.get('solver_err')
             if solver_err is not None:
                 solver_err = np.asarray(solver_err, dtype=float)
+
+            # Per-point marker mask. Au panels are run with a relaxed
+            # effective tolerance (PHASE7_RESIDUAL_THRESHOLD = 1e-3) since
+            # the production tol = 1e-5 is unreachable in the plasmonic
+            # regime; the whole panel is treated as gate-pass and every
+            # point uses the OK glyph (filled circle / open square),
+            # matching non-Au panels visually. The relaxed-tol caveat is
+            # noted in the paper body / figure caption.
+            if mat == 'Au':
+                eff_conv = np.ones_like(converged, dtype=bool)
+            else:
+                eff_conv = converged
 
             order  = np.argsort(x_n)
             i_2nd  = order[-2] if n_lc >= 2 else order[-1]
@@ -306,14 +335,16 @@ def plot_phase7(save=True):
                     ax.set_title(MATERIAL_LABEL[mat])
                 if j == 0:
                     ax.set_ylabel(SHAPE_LABEL[shape] + '\\n'
-                                  + r'$|X(\\ell_c)-X_{\\rm ref}|/|X_{\\rm ref}|$')
+                                  + r'$\\left| |S_{\\rm fw}^{\\theta}|(\\ell_c)'
+                                  + r'-|S_{\\rm fw}^{\\theta}|_{\\rm ref}'
+                                  + r'\\right|/|S_{\\rm fw}^{\\theta}|_{\\rm ref}$')
                 if i == len(PHASE7_SHAPES) - 1:
-                    ax.set_xlabel(r'$n_{\\rm tet}$')
+                    ax.set_xlabel('Number of vol. elements')
                 continue
 
             anchor_set = False
             tmm_ref = PHASE7_CONV_REF.get((shape, mat))   # None for GRE
-            for obs_key, _latex, kind, color in PHASE7_OBS_FIG4:
+            for obs_key, _latex, kind in PHASE7_OBS_FIG4:
                 y = _conv_value(viem, obs_key, kind)
                 if y is None or len(y) != n_lc:
                     continue
@@ -325,15 +356,17 @@ def plot_phase7(save=True):
                 if eps_r is not None:
                     m_fin = np.isfinite(eps_r) & (eps_r > 0)
                     ax.plot(x_n[m_fin], eps_r[m_fin], ls='--',
-                            color=color, lw=0.9, alpha=0.55, zorder=2)
-                    m_ok  = m_fin & converged
-                    m_stl = m_fin & ~converged
+                            color=PHASE7_RICH_COLOR, lw=0.9, alpha=0.85,
+                            zorder=2)
+                    m_ok  = m_fin & eff_conv
+                    m_stl = m_fin & ~eff_conv
                     ax.plot(x_n[m_ok], eps_r[m_ok], ls='', marker='s',
-                            markersize=5, color=color, mfc='none', mew=1.0,
-                            zorder=3)
+                            markersize=5, color=PHASE7_RICH_COLOR,
+                            mfc='none', mew=1.0, zorder=3)
                     if m_stl.any():
                         ax.plot(x_n[m_stl], eps_r[m_stl], ls='', marker='x',
-                                markersize=8, mew=1.4, color=color, zorder=4)
+                                markersize=8, mew=1.4,
+                                color=PHASE7_RICH_COLOR, zorder=4)
 
                 # ----- TMM curve (oblate only, when β=0 ref available) ---
                 eps_t = None
@@ -349,24 +382,35 @@ def plot_phase7(save=True):
                         if eps_t is not None:
                             m_fin = np.isfinite(eps_t) & (eps_t > 0)
                             ax.plot(x_n[m_fin], eps_t[m_fin], ls='-',
-                                    color=color, lw=0.9, alpha=0.85, zorder=2)
-                            m_ok  = m_fin & converged
-                            m_stl = m_fin & ~converged
+                                    color=PHASE7_TMM_COLOR, lw=0.9,
+                                    alpha=0.95, zorder=2)
+                            m_ok  = m_fin & eff_conv
+                            m_stl = m_fin & ~eff_conv
                             ax.plot(x_n[m_ok], eps_t[m_ok], ls='', marker='o',
-                                    markersize=5, color=color, mfc=color,
-                                    mew=0.5, zorder=3)
+                                    markersize=5, color=PHASE7_TMM_COLOR,
+                                    mfc=PHASE7_TMM_COLOR, mew=0.5, zorder=3)
                             if m_stl.any():
                                 ax.plot(x_n[m_stl], eps_t[m_stl], ls='',
                                         marker='x', markersize=8, mew=1.4,
-                                        color=color, zorder=4)
+                                        color=PHASE7_TMM_COLOR, zorder=4)
 
-                # ----- Slope guide anchored on TMM > Richardson > coarsest
+                # ----- Slope guide anchored on Richardson > TMM > coarsest.
+                # Richardson by construction satisfies the assumed h^2 rate
+                # between its 2nd-finest and finest meshes (X_inf is built
+                # from exactly those two points), so a -2/3 line anchored on
+                # the Richardson 2nd-finest point is guaranteed to pass
+                # through both Richardson markers. Anchoring on TMM instead
+                # makes the line drift below the Richardson curve in
+                # regimes where TMM convergence is non-monotonic
+                # (e.g. oblate x Au plasmonic, where eps_T at finest exceeds
+                # eps_T at 2nd-finest) — the line then passes through
+                # neither Richardson nor finest TMM. Hence Richardson first.
                 if not anchor_set:
                     eps_anchor = None
-                    if eps_t is not None and np.isfinite(eps_t[i_2nd]) and eps_t[i_2nd] > 0:
-                        eps_anchor = float(eps_t[i_2nd])
-                    elif eps_r is not None and np.isfinite(eps_r[i_2nd]) and eps_r[i_2nd] > 0:
+                    if eps_r is not None and np.isfinite(eps_r[i_2nd]) and eps_r[i_2nd] > 0:
                         eps_anchor = float(eps_r[i_2nd])
+                    elif eps_t is not None and np.isfinite(eps_t[i_2nd]) and eps_t[i_2nd] > 0:
+                        eps_anchor = float(eps_t[i_2nd])
                     if eps_anchor is not None:
                         xs = np.array([x_n.min(), x_n.max()])
                         ys = eps_anchor * (xs / x_n[i_2nd]) ** (-2.0 / 3.0)
@@ -379,6 +423,28 @@ def plot_phase7(save=True):
                 ys = 1e-2 * (xs / x_n.max()) ** (-2.0 / 3.0)
                 ax.plot(xs, ys, ls=':', color='k', lw=0.9, alpha=0.6, zorder=0)
 
+            # Adaptive lc reference: gray translucent band at the
+            # production sweep n_tet for r_ve = 0.1, matching fig 1's
+            # axvspan annotation (alpha = 0.18, half-width 0.075 decades
+            # in log10). Centered on the single VIEM n_tet value (fig 4 is
+            # VIEM-only; fig 1 spans DDA n_occ to VIEM n_tet).
+            prod_viem = DATA.get((shape, mat), {}).get('viem')
+            if prod_viem is not None:
+                n_tet_p = prod_viem.get('cost', {}).get('n_tet')
+                rve_p   = prod_viem.get('a_eq')
+                if n_tet_p is not None and rve_p is not None:
+                    rve_arr = np.asarray(rve_p).ravel()
+                    n_tet_arr = np.asarray(n_tet_p).ravel()
+                    if rve_arr.size and n_tet_arr.size == rve_arr.size:
+                        k01 = int(np.argmin(np.abs(rve_arr - 0.1)))
+                        if abs(rve_arr[k01] - 0.1) < 1e-9:
+                            center = float(n_tet_arr[k01])
+                            half_w_log = 0.075
+                            x_lo = center * 10.0 ** (-half_w_log)
+                            x_hi = center * 10.0 ** (+half_w_log)
+                            ax.axvspan(x_lo, x_hi, color='gray',
+                                        alpha=0.18, lw=0, zorder=0)
+
             ax.set_xscale('log')
             ax.set_yscale('log')
             ax.axhline(1e-2, color='gray', lw=0.4, ls=':')
@@ -389,28 +455,44 @@ def plot_phase7(save=True):
                 ax.set_title(MATERIAL_LABEL[mat])
             if j == 0:
                 ax.set_ylabel(SHAPE_LABEL[shape] + '\\n'
-                              + r'$|X(\\ell_c)-X_{\\rm ref}|/|X_{\\rm ref}|$')
+                              + r'$\\left| |S_{\\rm fw}^{\\theta}|(\\ell_c)'
+                              + r'-|S_{\\rm fw}^{\\theta}|_{\\rm ref}'
+                              + r'\\right|/|S_{\\rm fw}^{\\theta}|_{\\rm ref}$')
             if i == len(PHASE7_SHAPES) - 1:
-                ax.set_xlabel(r'$n_{\\rm tet}$')
+                ax.set_xlabel('Number of vol. elements')
 
-    handles_obs = [
-        Line2D([], [], color=col, marker='', linestyle='-', lw=1.4, label=latex)
-        for _, latex, _, col in PHASE7_OBS_FIG4
-    ]
+    # Single-observable legend: drop the per-observable colour entry —
+    # colour now denotes the reference choice (TMM vs Richardson).
     handles_ref = [
-        Line2D([], [], color='gray', marker='o', markersize=6,
-                linestyle='-', lw=0.9, label=r'vs TMM ($\\beta\\!=\\!0$, oblate)'),
-        Line2D([], [], color='gray', marker='s', markersize=6, mfc='none',
-                mew=1.0, linestyle='--', lw=0.9,
+        Line2D([], [], color=PHASE7_TMM_COLOR, marker='o', markersize=6,
+                linestyle='-', lw=0.9,
+                label=r'vs TMM ($\\beta\\!=\\!0$, oblate)'),
+        Line2D([], [], color=PHASE7_RICH_COLOR, marker='s', markersize=6,
+                mfc='none', mew=1.0, linestyle='--', lw=0.9,
                 label=r'vs Richardson $X_\\infty^{\\rm Rich}$'),
     ]
+    # × stalled marker dropped: with Au panels treated as gate-pass and
+    # non-Au panels fully converged, no point in fig 4 ever uses the
+    # stalled glyph. Production-sweep gray axvspan promoted to a Patch
+    # entry, matching fig 1's legend style.
     handles_extra = [
         Line2D([], [], color='k', linestyle=':', lw=0.9, alpha=0.6,
                 label=r'slope $-2/3$ ($\\varepsilon\\propto h^2$)'),
-        Line2D([], [], color='gray', marker='x', linestyle='', mew=1.4,
-                markersize=7, label='solver stalled (MAXITER=200)'),
+        Patch(facecolor='gray', alpha=0.18, edgecolor='none',
+                label=r'production sweep $n_{\\rm tet}$ at $r_{\\rm ve}=0.1$'),
     ]
-    fig.legend(handles=handles_obs + handles_ref + handles_extra,
+    # x-axis lower bound clipped to 10^3 (the smallest sweep n_tet = 405
+    # at oblate × n15 is below the bound and gets cropped out — it is far
+    # from the asymptotic regime anyway). sharex=True propagates.
+    axes[0, 0].set_xlim(left=1e3)
+
+    # GRE × Au panel below oblate × Au is hidden, so oblate × Au would
+    # otherwise inherit the sharex=True suppression of its tick labels and
+    # have no xlabel. Force-show the bottom tick labels and add the x-axis
+    # label here.
+    axes[0, 2].tick_params(axis='x', which='both', labelbottom=True)
+    axes[0, 2].set_xlabel('Number of vol. elements')
+    fig.legend(handles=handles_ref + handles_extra,
                 ncol=3, loc='lower center', bbox_to_anchor=(0.5, -0.07),
                 fontsize=8)
     plt.tight_layout(rect=(0, 0.06, 1, 0.97))

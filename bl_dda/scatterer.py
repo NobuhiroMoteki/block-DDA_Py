@@ -1,6 +1,6 @@
 import numpy as np
 from mvp_fft.mvp_fft import fft_init
-from bl_krylov.bl_krylov import bl_bicgstab_jacobi_mvp_fft
+from bl_krylov.bl_krylov import bl_gmres_mvp_fft
 from scipy.spatial.transform import Rotation as R
 import time
 
@@ -172,9 +172,9 @@ class DiscreteDipoles(Target, IncidentField):
     def solve_matrix_equation(self):
 
         start_time = time.time()
-        print("Starting block-BiCGStab iterative solver...")
+        print("Starting block-GMRES iterative solver...")
 
-        self.X, iter_fin, err_fin = bl_bicgstab_jacobi_mvp_fft(
+        self.X, iter_fin, err_fin, self.err_history = bl_gmres_mvp_fft(
             self.lattice_n, self.f, self.lattice_address_in_target,
             self.Au_til, self.diag_A, self.B, self.tol, self.itermax)
 
@@ -182,7 +182,7 @@ class DiscreteDipoles(Target, IncidentField):
 
         if err_fin < self.tol:
             self.converge = True
-            print("block-BiCGStab converged! "
+            print("block-GMRES converged! "
                   "(iter_fin={:}, err_fin={:.4f}, solver time={:.1f}s)".format(
                       iter_fin, err_fin, elapsed_time))
 

@@ -248,7 +248,7 @@ material × N_DOF スケーリングに焦点を絞る。`bl_krylov.bl_bicgstab_
 | `C_abs` | float64 | 同上 | μm² | 吸収断面積 |
 | `S_fw_PCAS_theta` | complex128 | 同上 | μm | 前方散乱振幅 θ 成分 = `S11(0) + i·S12(0)` |
 | `S_fw_PCAS_phi` | complex128 | 同上 | μm | 前方散乱振幅 φ 成分 = `S22(0) − i·S21(0)` |
-| `S_bk_OCBS` | complex128 | 同上 | μm | 後方散乱振幅 = `(S11+S22+i·S12−i·S21)(180°)/√2` |
+| `S_bk_OCBS` | complex128 | 同上 | μm | 後方散乱振幅 = `(−S11+S22−i·S12−i·S21)(180°)/√2` (theory_note.tex §S-bk; `(−S_bk_θ + S_bk_φ)/√2` with `S_bk_θ = S11+i·S12`, `S_bk_φ = S22−i·S21` at θ=π) |
 | `Euler_angles` | float64 | (...,100,3) | rad | (α, β, γ) per orientation |
 | `r_ve` | float64 | (N_rv,1,1,1) | μm | 体積保存リスケール後の体積等価半径 (= r_v_base 厳密) |
 

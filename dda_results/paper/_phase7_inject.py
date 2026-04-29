@@ -507,7 +507,7 @@ def plot_phase7(save=True):
                 fontsize=8)
     plt.tight_layout(rect=(0, 0.05, 1, 0.97), h_pad=0.3)
     if save:
-        save_fig(fig, 'fig4_lc_convergence_nonsphere')
+        save_fig(fig, 'fig2_lc_convergence_nonsphere')
     plt.show()
 
 

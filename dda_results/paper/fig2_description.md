@@ -16,25 +16,39 @@ DDA and VIEM.
 
 ## 2. Layout
 
-**Single figure file**: `fig2_rhs_scaling.{png,pdf}`, 2 × 2 panels.
+**Single figure file**: `fig2_rhs_scaling.{png,pdf}`, 2 × 3 panels with
+square axis boxes (`ax.set_box_aspect(1.0)`, `figsize=(12, 7.5)`,
+`gridspec_kw={'wspace': 0.10}` to tighten the column gap to match
+fig 1 / fig 4).
 
-- **Col 1**: n20 ($m_p = 2.0+0.0i$) — **DDA + VIEM overlay**, $r_{\rm ve} \in \{0.10, 0.20, 0.40\}$ μm.
-- **Col 2**: Au ($m_p = 0.18+3.48i$) — **VIEM only**, $r_{\rm ve} \in \{0.05, 0.10, 0.20\}$ μm. (Au has no $r_{\rm ve}=0.40$ case; production-resolution DDA hits MAXITER for every $r_{\rm ve}$ — see §9 — and is omitted to avoid clutter.)
-- **Row 1**: GMRES iterations (log y, capped at $1.25\times$ MAXITER ≈ 250). Au plasmonic stalls span the $[10, 200]$ iter range so log makes the convergence pattern legible.
-- **Row 2**: Solving time per orientation [s] (log y).
-- n15 is dropped: its trend in n20 is essentially repeated and adds no new information.
+- **Col 1**: n15 ($m_p = 1.5+0.01i$) — **DDA + VIEM overlay**, $r_{\rm ve} \in \{0.20, 0.40\}$ μm.
+- **Col 2**: n20 ($m_p = 2.0+0.0i$) — **DDA + VIEM overlay**, $r_{\rm ve} \in \{0.20, 0.40\}$ μm.
+- **Col 3**: Au ($m_p = 0.18+3.48i$) — **VIEM only**, $r_{\rm ve} \in \{0.05, 0.10, 0.20\}$ μm. (Au has no $r_{\rm ve}=0.40$ case; production-resolution DDA hits MAXITER for every $r_{\rm ve}$ — see §9 — and is omitted to avoid clutter.) Columns ordered by $|m_p|$: real-index $\to$ plasmonic.
+- **Row 1**: GMRES iterations on a **log** y-axis with **fixed range $[8,\,300]$** — the lower bound just clears the most well-conditioned cases (`iters` $\approx 10$ on n15 / small Au at large $L$) and the upper bound just clears the $1.25\times$ MAXITER stall plateau ($= 250$). The fixed range is identical across all three columns, so iteration counts are directly comparable across materials.
+- **Row 2**: Solving time per orientation [s] (log y, lower bound fixed at $10^{-2}$ s — values below 10 ms cluster on the per-iteration noise floor and would otherwise dominate the visible y-range, hiding the iter-count-driven structure of the slower (larger $r_{\rm ve}$ / VIEM) curves).
+- For the two real-index materials (n15 / n20) only $r_{\rm ve}\in\{0.20,\,0.40\}$ is shown — the two larger production sizes where solver iter count grows enough to make block-Krylov scaling readable; smaller sizes (0.05, 0.10) converge in $\le 30$ iterations on every $L$ and the curves are essentially flat (no scaling story). Au keeps three sizes because its no-$r_{\rm ve}=0.40$ + plasmonic-stall combination would leave too few points if reduced further.
 
 ### Encodings
 
-- **Solver = colour**: DDA = `C0` blue (filled marker, solid line); VIEM = `C1` orange (open marker, dashed line).
-- **$r_{\rm ve}$ = marker shape** (uniform across both columns and both rows):
+Encoding swap relative to the prior 4-observable layout: **size** is now
+on the colour axis (most informative dimension) and the **solver** identity
+is on the marker / linestyle axis.
 
-  | $r_{\rm ve}$ [μm] | marker |
+- **$r_{\rm ve}$ = colour** (uniform across all columns and rows):
+
+  | $r_{\rm ve}$ [μm] | colour |
   | --- | --- |
-  | 0.05 | ○ |
-  | 0.10 | ▢ |
-  | 0.20 | △ |
-  | 0.40 | ◇ |
+  | 0.05 | C0 (blue)   |
+  | 0.10 | C1 (orange) |
+  | 0.20 | C2 (green)  |
+  | 0.40 | C3 (red)    |
+
+- **Solver = marker shape + linestyle**:
+
+  | solver | marker | linestyle | mfc |
+  | --- | --- | --- | --- |
+  | DDA  | ● filled circle | solid `-` | filled |
+  | VIEM | □ open square   | dashed `--` | open |
 
 - **MAXITER stalls** (`converged = 0`): $\times$ marker on the iter panel; **omitted** from the solving-time panel (their wall time is the budget cap, not actual convergence cost).
 - `sharex=True, sharey='row'` — both panels in a row share the same y-range.

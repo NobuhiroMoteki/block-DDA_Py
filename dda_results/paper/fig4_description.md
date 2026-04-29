@@ -245,32 +245,82 @@ the relative-error ratio.
 
 ## 4. Per-panel display
 
-Two observables × up to two reference methods are overlaid:
+Single observable ($|S_{\rm fw}^{\theta}|$) × up to two reference
+methods. With only one observable the line **colour** now denotes the
+**reference choice**, not the observable.
 
-- **Observable colour**: C0 (blue) = $Q_{\rm ext}$,
-  C2 (green) = $|S_{\rm fw}^{\theta}|$.
-- **vs TMM** (oblate panels only): filled circle ●, **solid** line.
-- **vs Richardson** (all panels): open square □, **dashed** line.
-- **Stalled $\ell_c$ points** (`converged = 0`): drawn as `×` on top of the
-  connecting lines, in the same observable colour. (Au panels passing
-  the §6.3 gate show all 5 lc points as `×`.)
+- **vs TMM** (oblate panels only): C0 (blue), filled circle ●, **solid** line.
+- **vs Richardson** (all panels):  C3 (red),  open square □, **dashed** line.
+- **Marker policy.** Non-Au panels use the raw `converged` flag
+  (production tol $=10^{-5}$); every point on these panels converges
+  well below that and hence uses the OK glyph (●/□). **Au panels are
+  treated as gate-pass panel-wide**: the production tol is unreachable
+  in the plasmonic regime, so all Au lc points are run with a relaxed
+  effective tolerance (residuals $\leq 10^{-3}$ at the finest pair —
+  see §6.3). Per-point markers therefore use the same OK glyph as
+  non-Au panels rather than `×` stalled. The relaxed-tol caveat is
+  noted in the paper body / figure caption rather than encoded in the
+  figure as a stalled-marker overlay.
+- **Adaptive lc reference**: gray translucent vertical band
+  (`axvspan`, `alpha = 0.18`, `lw = 0`, `zorder = 0`) centered on the
+  production sweep $n_{\rm tet}$ for the same particle slot at
+  $r_{\rm ve}=0.1\,\mu$m (= what `adaptive_lc` selects), with
+  half-width $0.075$ decades in $\log_{10}$. Matches fig 1's
+  production-sweep band style exactly; fig 4 is VIEM-only so the band
+  is centered on a single value rather than spanning DDA $n_{\rm occ}$
+  to VIEM $n_{\rm tet}$.
+- **GRE × Au panel removed.** The convergence sweep for GRE × Au
+  fails the §6.3 residual gate (residuals $1.6\times 10^{-2}$ to
+  $5.5\times 10^{-2}$, see §3.4 / §6.3) and yields no usable data.
+  The empty bottom-right panel is hidden via `ax.set_visible(False)`
+  rather than annotated with a "plot skipped" message — paper-style
+  decision to drop empty panels entirely.
 - **Slope $-2/3$ guide**: thin black dotted line, anchored at the
-  **2nd-finest** point of the TMM curve when available (oblate), or
-  the Richardson curve otherwise (GRE), drawn behind the data
-  (`zorder = 0`). Under the assumed $h^2$ model the line passes through
-  the finest point as well, so the visual test is whether the coarser
-  points fall on the same line (= asymptotic regime reached) or above
-  it (= leading $h^2$ term not yet dominant).
+  **2nd-finest** point of the **Richardson** curve, falling back to TMM
+  only if Richardson is undefined (which never happens in practice).
+  Drawn behind the data (`zorder = 0`). The Richardson anchor is chosen
+  because $X_\infty^{\rm Rich}$ is constructed from exactly the
+  2nd-finest and finest meshes assuming $h^2$, so the slope line
+  **passes exactly through both Richardson markers by construction**.
+  Anchoring on TMM instead would drift the line below the Richardson
+  curve in regimes where TMM convergence is non-monotonic (e.g.
+  oblate × Au plasmonic, where $\varepsilon_{\rm TMM}$ at the finest
+  mesh exceeds $\varepsilon_{\rm TMM}$ at the 2nd-finest — the
+  unconverged-residual MAXITER stalls perturb the TMM-relative error
+  away from the underlying SWG h² rate that Richardson recovers).
+  The visual test is whether the coarser points fall on the same line
+  (= asymptotic regime reached) or above it (= leading $h^2$ term not
+  yet dominant).
 - **Horizontal guides**: $\varepsilon = 10^{-2}$ and $10^{-3}$
   (gray dotted), same as fig 1.
-- Both axes log-scaled.
+- Both axes log-scaled. **x-axis lower bound clipped to $10^3$** via
+  `axes[0,0].set_xlim(left=1e3)` (`sharex=True` propagates to all
+  panels). The smallest VIEM convergence-sweep $n_{\rm tet}$ is 1 751
+  (oblate × n15), so this lower bound trims an empty leading region
+  rather than cropping any data point.
+- **x-axis label** is `'Number of vol. elements'`, identical to fig 1.
+  The DDA / VIEM cross-comparison framing is preserved even though
+  fig 4 plots only VIEM, so the same "n_dof or n_tet" reading applies.
+- **oblate × Au panel xlabel + tick labels.** With the GRE × Au panel
+  below it hidden, the `sharex=True` default would suppress oblate × Au's
+  bottom tick labels. We force them visible via
+  `axes[0,2].tick_params(axis='x', labelbottom=True)` and add the
+  xlabel explicitly with `axes[0,2].set_xlabel('Number of vol. elements')`,
+  so oblate × Au reads as a fully self-contained panel.
 - Inside-pointing mirror ticks on all four sides.
 - Layout: `figsize=(11.5, 6.5)`, `sharex=sharey=True`, suptitle on top
-  with the relative-error formula spelled out in inline LaTeX.
+  with the relative-error formula spelled out in inline LaTeX
+  ($|S_{\rm fw}^{\theta}|$ substituted for the generic $X$).
+- **y-axis label** also substitutes $X \to |S_{\rm fw}^{\theta}|$
+  explicitly, since a separate observable-colour legend entry would be
+  redundant with a single observable.
 - Single bottom-aligned legend (`ncol=3`, `bbox_to_anchor=(0.5, -0.07)`)
-  collecting (i) the two observable colours, (ii) the two reference
-  marker / linestyle pairs, and (iii) the slope-guide / stalled-marker
-  entries.
+  collecting (i) the two reference marker / linestyle / colour pairs,
+  (ii) the slope $-2/3$ dotted-line entry, and (iii) the gray
+  production-sweep `Patch` (matching fig 1's legend style). The
+  stalled `×` legend entry was removed: with Au panels treated as
+  gate-pass panel-wide and non-Au panels fully converged, no point in
+  fig 4 ever uses the stalled glyph.
 
 ## 5. Output
 

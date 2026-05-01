@@ -367,4 +367,17 @@ def load_rhs_scaling(path: str | Path, side: Side) -> dict | None:
                   "t_end2end_per_orient_s", "peak_rss_bytes"):
             if k in g:
                 out[k] = _norm_L_rv(g[k][:])
+
+        # residual_history: extra iteration axis (length MAXITER, NaN-padded
+        # beyond convergence).  DDA stores axes (N_L, N_rv, ..., iter);
+        # VIEM stores (iter, ..., N_rv, N_L).  Normalise both to
+        # (N_L, N_rv, MAXITER) so downstream plotting code is side-agnostic.
+        if "residual_history" in g:
+            rh = np.squeeze(g["residual_history"][:])
+            if rh.ndim != 3:
+                raise ValueError(f"residual_history squeezed shape {rh.shape} "
+                                 f"(expected 3 axes after squeeze)")
+            if side == "viem":
+                rh = np.transpose(rh, (2, 1, 0))
+            out["residual_history"] = rh
     return out

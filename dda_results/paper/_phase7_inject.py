@@ -181,8 +181,15 @@ PHASE7_YLIM = (1.0e-4, 2.0e-2)
 # slope -2/3 in log-log. Identical on every panel (no per-panel LSQ
 # fit) so the same reference grid frames every dataset.
 PHASE7_SLOPE_REF_X  = 1.0e4
-PHASE7_SLOPE_REF_YS = (1.0e-4, 10.0**(-3.5), 1.0e-3, 10.0**(-2.5),
-                        1.0e-2, 10.0**(-1.5))  # 0.5-decade spacing
+# 0.5-decade spaced anchors. Anchor range now spans 1e-6 .. 10^{+1} so
+# the slope grid fully tiles the YLIM = (1e-5, 1e0) panel even at the
+# corners (x=1e3 / y=1e-5 bottom-left and x=3e5 / y=1e0 top-right).
+# Lines outside a given panel's YLIM are clipped by matplotlib, so the
+# same grid set is reused across all observables.
+PHASE7_SLOPE_REF_YS = (1.0e-6, 10.0**(-5.5), 1.0e-5, 10.0**(-4.5),
+                        1.0e-4, 10.0**(-3.5), 1.0e-3, 10.0**(-2.5),
+                        1.0e-2, 10.0**(-1.5), 1.0e-1, 10.0**(-0.5),
+                        1.0e0,  10.0**(+0.5), 1.0e1)
 
 # Single observable for fig 4 (paper editorial decision): |S_fw_θ| is
 # the polarimetric forward amplitude that the CAS-v2 retrieval consumes
@@ -266,7 +273,56 @@ def _phase7_kind_to_scalar(v, kind):
     return None
 
 
-def plot_phase7(save=True):
+def plot_phase7(obs_list=None, latex_short=None, fig_basename=None,
+                ylim=None, obs_colors=None, legend_obs_labels=None,
+                save=True):
+    """Render the 2x3 lc-convergence figure for one or several observables.
+
+    Parameters
+    ----------
+    obs_list : list of (obs_key, latex_label, kind) tuples or None
+        Observable spec passed through to _conv_value.  None defaults to
+        PHASE7_OBS_FIG4 (= |S_fw^θ|, kind='mag').
+    latex_short : str or None
+        LaTeX fragment used inside the title and y-axis labels (e.g.
+        r'|S_{\\rm fw}^{\\theta}|' or r'C_{\\rm ext}').  None defaults
+        to the |S_fw^θ| string matching the obs_list default.  In
+        combined-observable mode pass a generic placeholder like 'X' —
+        the per-observable identification is then carried by the legend.
+    fig_basename : str or None
+        File basename (no extension) passed to save_fig().  None
+        defaults to 'fig2_lc_convergence_nonsphere'.
+    ylim : tuple (lo, hi) or None
+        Per-figure y-axis limits (relative-error range).
+    obs_colors : list of color or None
+        Single-observable mode (None, default): TMM and Richardson are
+        drawn in PHASE7_TMM_COLOR / PHASE7_RICH_COLOR (blue / red), so
+        colour distinguishes the reference choice.
+        Combined mode (list): each obs in obs_list gets the colour at
+        the matching index, and the same colour is reused for both its
+        TMM and Richardson curves.  TMM vs Richardson are then
+        distinguished by line/marker style only (solid + filled circle
+        vs dashed + open square).
+    legend_obs_labels : list of str or None
+        In combined mode, LaTeX labels for the per-observable colour
+        legend entries.  Defaults to the latex_label slot of obs_list.
+    """
+    if obs_list is None:
+        obs_list = PHASE7_OBS_FIG4
+    if latex_short is None:
+        latex_short = r'|S_{\\rm fw}^{\\theta}|'
+    if fig_basename is None:
+        fig_basename = 'fig2_lc_convergence_nonsphere'
+    if ylim is None:
+        ylim = PHASE7_YLIM
+    multi_obs_mode = obs_colors is not None
+    if multi_obs_mode and len(obs_colors) != len(obs_list):
+        raise ValueError(
+            f'len(obs_colors) = {len(obs_colors)} must match '
+            f'len(obs_list) = {len(obs_list)} in combined mode')
+    if multi_obs_mode and legend_obs_labels is None:
+        legend_obs_labels = [t[1] for t in obs_list]
+
     # figsize matched to fig 1's per-panel aspect: fig 1 uses (11, 4) for
     # 1x3 -> ~3.67 x 4 per panel. Doubling the height for 2x3 here gives
     # the same per-panel aspect; h_pad in tight_layout (below) tightens
@@ -277,9 +333,9 @@ def plot_phase7(save=True):
     fig.suptitle(r'VIEM $\\ell_c$ convergence on non-sphere production shapes '
                   r'at $r_{\\rm ve}=0.1\\,\\mu$m, single orientation '
                   r'($\\alpha=\\beta=\\gamma=0$): '
-                  r'$\\left| |S_{\\rm fw}^{\\theta}|(\\ell_c) - '
-                  r'|S_{\\rm fw}^{\\theta}|_{\\rm ref} \\right| / '
-                  r'|S_{\\rm fw}^{\\theta}|_{\\rm ref}$',
+                  + r'$\\left| ' + latex_short + r'(\\ell_c) - '
+                  + r'{' + latex_short + r'}_{\\rm ref} \\right| / '
+                  + r'{' + latex_short + r'}_{\\rm ref}$',
                   y=1.00, fontsize=10)
 
     for i, shape in enumerate(PHASE7_SHAPES):
@@ -348,21 +404,31 @@ def plot_phase7(save=True):
                 )
                 ax.set_xscale('log'); ax.set_yscale('log')
                 ax.tick_params(axis='both', which='both', direction='in',
-                                top=True, right=True, bottom=True, left=True)
+                                top=True, right=True, bottom=True, left=True,
+                                labelsize=11)
                 if i == 0:
                     ax.set_title(MATERIAL_LABEL[mat])
                 if j == 0:
                     ax.set_ylabel(SHAPE_LABEL[shape] + '\\n'
-                                  + r'$\\left| |S_{\\rm fw}^{\\theta}|(\\ell_c)'
-                                  + r'-|S_{\\rm fw}^{\\theta}|_{\\rm ref}'
-                                  + r'\\right|/|S_{\\rm fw}^{\\theta}|_{\\rm ref}$')
+                                  + r'$\\left| ' + latex_short + r'(\\ell_c)'
+                                  + r'-{' + latex_short + r'}_{\\rm ref}'
+                                  + r'\\right|/{' + latex_short + r'}_{\\rm ref}$')
                 if i == len(PHASE7_SHAPES) - 1:
                     ax.set_xlabel('Number of vol. elements')
                 continue
 
             anchor_set = False
             tmm_ref = PHASE7_CONV_REF.get((shape, mat))   # None for GRE
-            for obs_key, _latex, kind in PHASE7_OBS_FIG4:
+            for idx_obs, (obs_key, _latex, kind) in enumerate(obs_list):
+                # Single-obs mode: blue TMM / red Richardson (current).
+                # Multi-obs mode: per-obs colour reused for both refs;
+                # TMM vs Richardson distinguished by line/marker style.
+                if multi_obs_mode:
+                    rich_color = obs_colors[idx_obs]
+                    tmm_color  = obs_colors[idx_obs]
+                else:
+                    rich_color = PHASE7_RICH_COLOR
+                    tmm_color  = PHASE7_TMM_COLOR
                 y = _conv_value(viem, obs_key, kind)
                 if y is None or len(y) != n_lc:
                     continue
@@ -374,17 +440,17 @@ def plot_phase7(save=True):
                 if eps_r is not None:
                     m_fin = np.isfinite(eps_r) & (eps_r > 0)
                     ax.plot(x_n[m_fin], eps_r[m_fin], ls='--',
-                            color=PHASE7_RICH_COLOR, lw=0.9, alpha=0.85,
+                            color=rich_color, lw=0.9, alpha=0.85,
                             zorder=2)
                     m_ok  = m_fin & eff_conv
                     m_stl = m_fin & ~eff_conv
                     ax.plot(x_n[m_ok], eps_r[m_ok], ls='', marker='s',
-                            markersize=5, color=PHASE7_RICH_COLOR,
+                            markersize=5, color=rich_color,
                             mfc='none', mew=1.0, zorder=3)
                     if m_stl.any():
                         ax.plot(x_n[m_stl], eps_r[m_stl], ls='', marker='x',
                                 markersize=8, mew=1.4,
-                                color=PHASE7_RICH_COLOR, zorder=4)
+                                color=rich_color, zorder=4)
 
                 # ----- TMM curve (oblate only, when β=0 ref available) ---
                 eps_t = None
@@ -400,17 +466,17 @@ def plot_phase7(save=True):
                         if eps_t is not None:
                             m_fin = np.isfinite(eps_t) & (eps_t > 0)
                             ax.plot(x_n[m_fin], eps_t[m_fin], ls='-',
-                                    color=PHASE7_TMM_COLOR, lw=0.9,
+                                    color=tmm_color, lw=0.9,
                                     alpha=0.95, zorder=2)
                             m_ok  = m_fin & eff_conv
                             m_stl = m_fin & ~eff_conv
                             ax.plot(x_n[m_ok], eps_t[m_ok], ls='', marker='o',
-                                    markersize=5, color=PHASE7_TMM_COLOR,
-                                    mfc=PHASE7_TMM_COLOR, mew=0.5, zorder=3)
+                                    markersize=5, color=tmm_color,
+                                    mfc=tmm_color, mew=0.5, zorder=3)
                             if m_stl.any():
                                 ax.plot(x_n[m_stl], eps_t[m_stl], ls='',
                                         marker='x', markersize=8, mew=1.4,
-                                        color=PHASE7_TMM_COLOR, zorder=4)
+                                        color=tmm_color, zorder=4)
 
                 # ----- Slope -2/3 reference grid: 6 parallel guide lines
                 # passing through (PHASE7_SLOPE_REF_X, ref_y) for each
@@ -422,11 +488,13 @@ def plot_phase7(save=True):
                 if not anchor_set:
                     xs = np.array(PHASE7_XLIM, dtype=float)
                     a_factor = PHASE7_SLOPE_REF_X ** (2.0/3.0)
+                    # Unified slope-line style with fig 1's -2/3 grid:
+                    # dashed gray, lw=0.7, alpha=0.4.
                     for ref_y in PHASE7_SLOPE_REF_YS:
                         a_k = ref_y * a_factor
                         ax.plot(xs, a_k * xs ** (-2.0/3.0),
-                                ls=':', color='k', lw=0.7,
-                                alpha=0.35, zorder=0)
+                                ls='--', color='gray', lw=0.7,
+                                alpha=0.4, zorder=0)
                     anchor_set = True
 
             if not anchor_set:
@@ -461,33 +529,52 @@ def plot_phase7(save=True):
             ax.axhline(1e-2, color='gray', lw=0.4, ls=':')
             ax.axhline(1e-3, color='gray', lw=0.4, ls=':')
             ax.tick_params(axis='both', which='both', direction='in',
-                            top=True, right=True, bottom=True, left=True)
+                            top=True, right=True, bottom=True, left=True,
+                            labelsize=11)
             if i == 0:
                 ax.set_title(MATERIAL_LABEL[mat])
             if j == 0:
                 ax.set_ylabel(SHAPE_LABEL[shape] + '\\n'
-                              + r'$\\left| |S_{\\rm fw}^{\\theta}|(\\ell_c)'
-                              + r'-|S_{\\rm fw}^{\\theta}|_{\\rm ref}'
-                              + r'\\right|/|S_{\\rm fw}^{\\theta}|_{\\rm ref}$')
+                              + r'$\\left| ' + latex_short + r'(\\ell_c)'
+                              + r'-{' + latex_short + r'}_{\\rm ref}'
+                              + r'\\right|/{' + latex_short + r'}_{\\rm ref}$')
             if i == len(PHASE7_SHAPES) - 1:
                 ax.set_xlabel('Number of vol. elements')
 
-    # Single-observable legend: drop the per-observable colour entry —
-    # colour now denotes the reference choice (TMM vs Richardson).
-    handles_ref = [
-        Line2D([], [], color=PHASE7_TMM_COLOR, marker='o', markersize=6,
-                linestyle='-', lw=0.9,
-                label=r'vs TMM ($\\beta\\!=\\!0$, oblate)'),
-        Line2D([], [], color=PHASE7_RICH_COLOR, marker='s', markersize=6,
-                mfc='none', mew=1.0, linestyle='--', lw=0.9,
-                label=r'vs Richardson $X_\\infty^{\\rm Rich}$'),
-    ]
+    # Legend depends on mode:
+    #  * Single-obs mode (multi_obs_mode == False): colour denotes the
+    #    reference choice (TMM blue / Richardson red).
+    #  * Combined mode (multi_obs_mode == True): colour denotes the
+    #    observable; TMM vs Richardson are distinguished by line/marker
+    #    style only, with a neutral ('k') swatch in the legend.
+    if multi_obs_mode:
+        handles_ref = [
+            Line2D([], [], color=obs_colors[k], marker='', linestyle='-',
+                    lw=2.2, label=legend_obs_labels[k])
+            for k in range(len(obs_list))
+        ] + [
+            Line2D([], [], color='k', marker='o', markersize=6,
+                    linestyle='-', lw=0.9,
+                    label=r'vs EBCM ($\\beta\\!=\\!0$, oblate)'),
+            Line2D([], [], color='k', marker='s', markersize=6,
+                    mfc='none', mew=1.0, linestyle='--', lw=0.9,
+                    label=r'vs Richardson $X_\\infty^{\\rm Rich}$'),
+        ]
+    else:
+        handles_ref = [
+            Line2D([], [], color=PHASE7_TMM_COLOR, marker='o', markersize=6,
+                    linestyle='-', lw=0.9,
+                    label=r'vs EBCM ($\\beta\\!=\\!0$, oblate)'),
+            Line2D([], [], color=PHASE7_RICH_COLOR, marker='s', markersize=6,
+                    mfc='none', mew=1.0, linestyle='--', lw=0.9,
+                    label=r'vs Richardson $X_\\infty^{\\rm Rich}$'),
+        ]
     # × stalled marker dropped: with Au panels treated as gate-pass and
     # non-Au panels fully converged, no point in fig 4 ever uses the
     # stalled glyph. Production-sweep gray axvspan promoted to a Patch
     # entry, matching fig 1's legend style.
     handles_extra = [
-        Line2D([], [], color='k', linestyle=':', lw=0.9, alpha=0.6,
+        Line2D([], [], color='gray', linestyle='--', lw=0.7, alpha=0.7,
                 label=r'slope $-2/3$ ($\\varepsilon\\propto h^2$)'),
         Patch(facecolor='gray', alpha=0.18, edgecolor='none',
                 label=r'production sweep $n_{\\rm tet}$ at $r_{\\rm ve}=0.1$'),
@@ -496,24 +583,45 @@ def plot_phase7(save=True):
     # out to 3e5 so the slope-(-2/3) reference grid extends past the
     # data range (max sweep n_tet = 109 692 = 1.1e5 on oblate × Au).
     axes[0, 0].set_xlim(*PHASE7_XLIM)
-    axes[0, 0].set_ylim(*PHASE7_YLIM)
+    axes[0, 0].set_ylim(*ylim)
 
-    # GRE × Au panel below oblate × Au is hidden, so oblate × Au would
-    # otherwise inherit the sharex=True suppression of its tick labels and
-    # have no xlabel. Force-show the bottom tick labels and add the x-axis
-    # label here.
-    axes[0, 2].tick_params(axis='x', which='both', labelbottom=True)
-    axes[0, 2].set_xlabel('Number of vol. elements')
+    # (Earlier fig 2 layouts hid the GRE × Au panel and force-showed the
+    # tick labels / xlabel on the oblate × Au panel above it.  Now that
+    # GRE × Au is plotted with the regular Richardson path, the oblate
+    # × Au panel inherits its labelbottom=False from the bottom row via
+    # sharex, so no special handling is needed.)
     fig.legend(handles=handles_ref + handles_extra,
                 ncol=3, loc='lower center', bbox_to_anchor=(0.5, -0.07),
                 fontsize=8)
     plt.tight_layout(rect=(0, 0.05, 1, 0.97), h_pad=0.3)
     if save:
-        save_fig(fig, 'fig2_lc_convergence_nonsphere')
+        save_fig(fig, fig_basename)
     plt.show()
 
 
-plot_phase7()
+# Single fig 2 — three observables (C_ext, Re S_fw^θ, Im S_fw^θ) overlaid
+# on the same 2x3 panel set.  Colour distinguishes the observable;
+# line/marker style distinguishes the reference choice (TMM solid + ●
+# vs Richardson dashed + □).  C_abs is intentionally excluded for
+# legibility: it is degenerate on the m_p = 2.0+0i (n20) column and the
+# four-observable layout was visually too dense.  YLIM widened to
+# (1e-5, 1e0) so Re S_fw^θ on gre × Au (~0.16) and the smaller
+# C_ext / Im S_fw^θ values (down to ~1e-4) all fit on the same axis.
+plot_phase7(obs_list=[('C_ext', r'$C_{\\rm ext}$', 'real'),
+                      ('S_fw_theta',
+                       r'$\\mathrm{Re}\\,S_{\\rm fw}^{\\theta}$', 'real'),
+                      ('S_fw_theta',
+                       r'$\\mathrm{Im}\\,S_{\\rm fw}^{\\theta}$', 'imag')],
+            latex_short=r'X',
+            fig_basename='fig2_C_ext_S_fw_theta_ReIm_lc_convergence_nonsphere',
+            ylim=(1.0e-5, 1.0e0),
+            # CUD-safe palette (Wong 2011): black for C_ext as the
+            # neutral "total" cross-section, blue/vermillion for the
+            # complementary Re/Im pair of the same complex S_fw^θ.
+            obs_colors=['#000000', '#0072B2', '#D55E00'],
+            legend_obs_labels=[r'$C_{\\rm ext}$',
+                                r'$\\mathrm{Re}\\,S_{\\rm fw}^{\\theta}$',
+                                r'$\\mathrm{Im}\\,S_{\\rm fw}^{\\theta}$'])
 '''
 
 

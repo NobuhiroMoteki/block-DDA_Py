@@ -105,23 +105,42 @@ Per-slot $n_{\rm tet}$ as recorded in the HDF5:
 | --- | --- | --- | --- |
 | oblate | n15 | 1 751 / 5 377 / 14 249 / 38 423 / 109 692 | 43, 36, 30, 29, 29 ; all converged |
 | oblate | n20 | (same)                                    | 51, 50, 29, 28, 28 ; all converged |
-| oblate | Au  | (same)                                    | 200 × 5 ; **all stalled** |
+| oblate | Au  | (same)                                    | 61, 140, 192, 200, 200 ; 3 converged, 2 stalled (BLOCK_SIZE = 64) |
 | gre    | n15 | 6 117 / 19 853 / 55 858                   | 85, 128, 136 ; all converged |
 | gre    | n20 | (same)                                    | 83, 122, 129 ; all converged |
-| gre    | Au  | (same)                                    | 200 × 3 ; **all stalled** |
+| gre    | Au  | (same)                                    | 98, 288, 400 ; 2 converged, 1 stalled (BLOCK_SIZE = 128, MAXITER = 400) |
 
 Au is plasmonic (LSP near-resonance at 0.638 μm) and the production-resolution
-unpreconditioned GMRES stalls at MAXITER = 200 for every $\ell_c$ point on
-both non-sphere shapes — same physics as the sphere×Au DDA stall described
+unpreconditioned single-orientation GMRES (BLOCK_SIZE = 1) stalled at
+MAXITER = 200 with $\|r\|_F/\|b\|_F$ in the $10^{-3}$ – $10^{-2}$ range on
+both non-sphere shapes — same physics as the sphere × Au DDA stall described
 in [`fig1_description.md §5`](fig1_description.md) and the production-vs-RHS
-discussion in [`fig2_description.md §6 / §9`](fig2_description.md).
+discussion in [`fig2_description.md §6 / §9`](fig2_description.md). The Au
+panels in fig 2 are therefore re-run with **block-Krylov subspace expansion**
+(BLOCK_SIZE > 1 in BlockVIEM): column 0 of the block holds the figure-defining
+single orientation $(\alpha,\beta,\gamma) = (0,0,0)$ unchanged, while the
+remaining $L-1$ columns are filled with deterministic uniform-on-SO(3) Euler
+angles (`MersenneTwister(RNG_SEED + 1)`); only column 0 is extracted for the
+figure, so the *physical* observable is bit-identical to the L = 1 problem
+and the larger block is purely a numerical convergence aid. The chosen sizes
+($L = 128$ for the smaller GRE × Au sweep, $L = 64$ for the 5-point oblate
+× Au sweep) were sized to fit within 188 GB on the regeneration host while
+keeping the total parallelism $L \times \text{Julia threads} \times
+\text{FFTW threads}$ inside the empirically safe envelope ($\le \sim 10^4$,
+spawn-storm threshold from prior FFTW sweeps).
 
 ### 3.5 Solver
 
 - **Method**: block-GMRES, unpreconditioned —
   `BlockVIEM.block_gmres` (`:aim_gmres` variant), same as fig 1 / 2 / 3.
+  Incremental block-Givens QR triangularises the block-Hessenberg
+  factor of block-Arnoldi for the least-squares minimisation step.
 - **Tolerance**: $\|R\|_F / \|B\|_F < 10^{-5}$.
-- **Maximum iterations**: 200 (raised from 100 in v0.7.6).
+- **Maximum iterations**: 200 for n15, n20 and oblate × Au; 400 for
+  GRE × Au (raised via the `MAXITER` env var) so that lc = 0.7 reaches
+  the relaxed Au gate ($10^{-3}$) — at MAXITER = 200 it had stalled at
+  $\|r\|_F/\|b\|_F = 2.5 \times 10^{-3}$ with the residual still
+  decaying ($r_{k+50}/r_k \approx 0.53$).
 
 ### 3.6a Reference (a) — TMM at $\beta=0$ (oblate only)
 
@@ -473,35 +492,56 @@ This is a 100× relaxation of the convergence criterion ($10^{-5}$),
 calibrated specifically to the plasmonic regime. n15 / n20 always pass
 this gate (final residuals $< 10^{-5}$).
 
-**Per-series gate result.**
+**Per-series gate result.** (Au panels regenerated 2026-04-30 / 2026-05-01
+on m3 with block-Krylov subspace expansion; see §3.4 / §3.5.)
 
 | Series | $\|r\|_F/\|b\|_F\big|_{\rm fine}$ | $\|r\|_F/\|b\|_F\big|_{\rm 2nd}$ | Pass $10^{-3}$? | fig 2 action |
 | --- | ---: | ---: | :---: | --- |
-| oblate × Au | $6.4\times 10^{-4}$ | $7.8\times 10^{-4}$ | ✅ | Richardson plot kept ($\times$ markers) |
-| gre × Au    | $5.5\times 10^{-2}$ | $3.9\times 10^{-2}$ | ❌ | **Richardson skipped**, panel annotated with the 3 final residuals |
+| oblate × Au ($L = 64$) | $2.0\times 10^{-4}$ (lc = 0.35) | $7.0\times 10^{-5}$ (lc = 0.5) | ✅ | TMM + Richardson plot kept |
+| gre × Au ($L = 128$, MAXITER = 400) | $3.0\times 10^{-4}$ (lc = 0.7) | $5.2\times 10^{-6}$ (lc = 1.0) | ✅ | Richardson plot kept |
 
-The GRE × Au panel of fig 2 is the only one in the figure with no
-plotted data; the annotation gives the actual residual sequence
-(`1.6e-02, 3.9e-02, 5.5e-02` from coarse to fine) so the reader can
-see the failure mode at a glance.
+Both Au panels are now plotted; the suppression-with-annotation path
+in `_phase7_inject.py` remains as a guard against future regressions.
 
-**Why GRE × Au fails the gate while oblate × Au does not.** GRE
-($\beta_{\rm gre}=0.2$) has an irregular surface that supports a
-quasi-continuum of LSP modes — refining the mesh resolves more of
-those modes, *adding* near-marginal eigenvalues to the operator
-spectrum and making GMRES *worse* (residual rises from $1.6\times 10^{-2}$
-at $\ell_c^{\rm factor}=1.5$ to $5.5\times 10^{-2}$ at $0.7$). Oblate's
-LSP modes are organised into a finite multiplet (axial vs equatorial)
-that is fully resolved already at the coarsest mesh; refinement then
-*reduces* the residual ($4.6\times 10^{-3}$ at $1.5$ down to
-$6.4\times 10^{-4}$ at $0.35$). Sphere × Au sits between the two
-($\sim 5\times 10^{-4}$ at every $\ell_c$, fig 1) because its LSP
-spectrum is degenerate and adding mesh elements neither resolves new
-modes nor improves resolution of the existing ones. This shape-driven
-spectral structure is the same physics analysed in
+**Why the block-Krylov retry was needed for the GRE × Au series.** With
+the production single-orientation solver (BLOCK_SIZE = 1, MAXITER = 200)
+the GRE × Au residuals at the three discretisations were $1.6\times 10^{-2}$,
+$3.9\times 10^{-2}$, $5.5\times 10^{-2}$ (coarse → fine) — *increasing*
+with refinement, the opposite of every other panel in the figure. GRE
+($\beta_{\rm gre} = 0.2$) has an irregular surface that supports a
+quasi-continuum of LSP modes; refining the mesh resolves more of those
+modes and *adds* near-marginal eigenvalues to the operator spectrum,
+making the single-orientation Krylov subspace progressively less able
+to capture the relevant invariant subspace. The block-Krylov solver at
+$L = 128$ supplies $L - 1 = 127$ extra deterministic uniform-on-SO(3)
+right-hand sides that span complementary directions of the same
+operator: the columns share a single Krylov basis, so each solve gets
+an effectively $L$-fold richer subspace at the same per-iteration FFT
+cost, and the column-0 single-orientation result is identical to the
+$L = 1$ problem by construction. With $L = 128$ + MAXITER = 400, the
+GRE × Au residuals drop to $8.4\times 10^{-6}$, $5.2\times 10^{-6}$,
+$3.0\times 10^{-4}$ at the three discretisations — under the gate at
+every point (see §3.4 for iter counts).
+
+**Why oblate × Au is comfortably under the gate.** Oblate × Au's LSP
+modes are organised into a finite multiplet (axial vs equatorial) that
+is fully resolved already at the coarsest mesh; refinement *reduces*
+the residual ($4.6\times 10^{-3}$ at $\ell_c^{\rm factor} = 1.5$ down
+to $6.4\times 10^{-4}$ at $0.35$ even with $L = 1$). The $L = 64$
+regeneration nevertheless ran every oblate × Au point with the same
+block-Krylov treatment as GRE × Au, both for symmetry of methodology
+and to push the finest pair to $7.0\times 10^{-5}$ / $2.0\times 10^{-4}$
+— two orders of magnitude inside the gate, leaving virtually no
+contamination on the Richardson reference. Sphere × Au sits between
+the two ($\sim 5\times 10^{-4}$ at every $\ell_c$, fig 1) because its
+LSP spectrum is degenerate and adding mesh elements neither resolves
+new modes nor improves resolution of the existing ones.
+
+This shape-driven spectral structure is the same physics analysed in
 [`fig4_description.md`](fig4_description.md) for sphere RHS scaling;
-preconditioning (Calderón / Schur-complement / multigrid) would be the
-natural fix and is left for future work.
+proper preconditioning (Calderón / Schur-complement / multigrid) would
+remove the need for the block-Krylov workaround and is left for future
+work.
 
 ### 6.4 Validity of the Richardson reference
 

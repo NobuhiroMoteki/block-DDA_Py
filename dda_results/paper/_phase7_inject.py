@@ -91,18 +91,22 @@ $Q_{\\rm ext}$ and $Q_{\\rm abs}$ are excluded as redundant with fig 1
 - Stalled $\\ell_c$ points (MAXITER=200) → `×` marker.
 
 **Au residual-threshold gate (paper Option B).** For Au every lc point
-exits at MAXITER=200 with non-zero $\\|r\\|/\\|b\\|$. Both the TMM
-overlay and the Richardson curve are kept only if $\\|r\\|/\\|b\\|$ at
-the two finest meshes is below $10^{-3}$ — a 100× relaxation of the
-convergence criterion bounding the observable bias to $\\sim 10^{-2}$
-in the plasmonic regime ($\\kappa(A)\\approx 10$ empirically). Series
-failing the gate are suppressed and the panel is annotated with the
-residual sequence. Per-series result:
+exits at MAXITER (200 for oblate, 400 for GRE) with non-zero
+$\\|r\\|/\\|b\\|$. Both the TMM overlay and the Richardson curve are
+kept only if $\\|r\\|/\\|b\\|$ at the two finest meshes is below
+$10^{-3}$ — a 100× relaxation of the convergence criterion bounding
+the observable bias to $\\sim 10^{-2}$ in the plasmonic regime
+($\\kappa(A)\\approx 10$ empirically). Au panels are run with a
+block-Krylov subspace expansion (BLOCK_SIZE=128 for GRE Au, 64 for
+oblate Au) to break the single-orientation stall while keeping the
+column-0 observable identical to the L=1 single-orientation result.
+Per-series result with the regenerated convergence sweeps (m3,
+2026-04-30 / 2026-05-01):
 
 | Series | $\\|r\\|/\\|b\\|$ at finest pair | gate $10^{-3}$ | fig 4 action |
 | --- | ---: | :---: | --- |
-| oblate × Au | $6.4\\times 10^{-4},\\ 7.8\\times 10^{-4}$ | ✅ | TMM + Richardson kept (×) |
-| gre × Au    | $5.5\\times 10^{-2},\\ 3.9\\times 10^{-2}$ | ❌ | **suppressed**, panel annotated |
+| oblate × Au | $7.0\\times 10^{-5},\\ 2.0\\times 10^{-4}$ | ✅ | TMM + Richardson kept |
+| gre × Au    | $5.2\\times 10^{-6},\\ 3.0\\times 10^{-4}$ | ✅ | Richardson kept |
 
 Detailed derivation in [`fig4_description.md` §6.3](fig4_description.md).
 """
@@ -155,9 +159,12 @@ Residual-threshold gate (paper-policy Option B). Stalled-residual
 contamination of X_∞^Rich is acceptable only when ‖r‖/‖b‖ at both
 finest meshes is below PHASE7_RESIDUAL_THRESHOLD = 1e-3 (justification
 in fig4_description.md §6.3). Series failing the gate are not plotted;
-the panel shows the final residuals as a textual annotation. Au series:
-oblate Au passes the gate (6.4e-4, 7.8e-4 — both Richardson and TMM
-overlays kept); GRE Au fails (5.5e-2, 3.9e-2 — both suppressed).
+the panel shows the final residuals as a textual annotation.
+After the m3 regeneration (BLOCK_SIZE=128 GRE Au with MAXITER=400, and
+BLOCK_SIZE=64 oblate Au, lc convergence sweep, 2026-04-30 / 2026-05-01),
+both Au series pass the gate: oblate Au finest-pair residuals 7.0e-5,
+2.0e-4; GRE Au finest-pair residuals 5.2e-6, 3.0e-4 (Richardson kept,
+no TMM reference for GRE).
 """
 
 from matplotlib.patches import Patch  # noqa: E402  — local to Phase 7
@@ -278,13 +285,6 @@ def plot_phase7(save=True):
     for i, shape in enumerate(PHASE7_SHAPES):
         for j, mat in enumerate(MATERIALS):
             ax = axes[i, j]
-            # Drop GRE × Au panel: VIEM convergence sweep cannot reach the
-            # relaxed Au gate (residuals 1.6e-2 to 5.5e-2 — see
-            # fig4_description.md §6.3). Empty panel removed rather than
-            # annotated, per paper editorial decision.
-            if shape == 'gre' and mat == 'Au':
-                ax.set_visible(False)
-                continue
             c = CONV.get((shape, mat), {})
             viem = c.get('viem')
             if (viem is None
@@ -322,9 +322,11 @@ def plot_phase7(save=True):
             i_2nd  = order[-2] if n_lc >= 2 else order[-1]
             i_fine = order[-1]
 
-            # Residual-threshold gate (paper Option B). Au cases:
-            # oblate × Au passes (residuals ~6e-4); GRE × Au fails
-            # (residuals 4e-2 to 6e-2 — plot suppressed).
+            # Residual-threshold gate (paper Option B). After the m3
+            # regeneration with block-Krylov subspace expansion
+            # (BLOCK_SIZE=128 GRE Au + MAXITER=400, BLOCK_SIZE=64 oblate
+            # Au), both Au series pass the gate. The dynamic check below
+            # remains as a guard for future regressions.
             if (solver_err is not None
                     and (solver_err[i_fine] > PHASE7_RESIDUAL_THRESHOLD
                          or solver_err[i_2nd] > PHASE7_RESIDUAL_THRESHOLD)):

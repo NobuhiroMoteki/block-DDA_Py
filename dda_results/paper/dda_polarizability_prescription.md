@@ -73,9 +73,16 @@ $$
 
 ## 4. 二つの定式化を結ぶ等式
 
-CR2009 の self-term $\boldsymbol{G}_{\rm int}^{ee}(\boldsymbol{r}_i,\boldsymbol{r}_i)$
-を、**等価体積球** ($V_a = d^3$、半径 $a = (3d^3/4\pi)^{1/3}$) で
-Peltoniemi 1996 の解析評価を使って計算すると:
+CR2009 自身は self-Green 評価の詳細を **Chaumet, Sentenac & Rahmani 2004
+(Phys. Rev. E 70, 036606)** (CR2009 ref [3]) に委ねている。CSR2004 Eq. (11)
+は cubic cell 上の $\boldsymbol{G}_{\rm int}^{ee}(\boldsymbol{r}_i,\boldsymbol{r}_i)$
+を Weyl 展開で**近似なし**に解析的評価し、$\Delta \to 0$ 極限で
+$\lim \boldsymbol{G}_{\rm int}^{ee}(\boldsymbol{r}_i,\boldsymbol{r}_i) = -(4\pi/3)\boldsymbol{I}$
+を導出している (これが CR2009 Eq. (17) の $+(4\pi/3)\boldsymbol{I}$ の出所)。
+
+実用上は CSR2004 の cubic-cell 評価を **等価体積球** ($V_a = d^3$、半径
+$a = (3d^3/4\pi)^{1/3}$) で近似した Peltoniemi 1996 の解析評価が等価で扱い
+やすい。これを使って計算すると:
 $$
 \boldsymbol{G}_{\rm int}^{ee}(\boldsymbol{r}_i,\boldsymbol{r}_i) = 4\pi\Bigl[-\tfrac{1}{3} + G_1(ka)\Bigr]\boldsymbol{I} \quad (\text{$G_2$ 項を省略})
 $$
@@ -136,13 +143,13 @@ self.alpha_E = alpha0_E / (1 - M_term * alpha0_E / self.element_vol)
 
 ## 7. 関係性のまとめ
 
-| 役割 | Peltoniemi 1996 | CR2009 | block-DDA_Py |
-|---|---|---|---|
-| 静的部分 | $-\tfrac{1}{3}\chi$ in Eq. (4) | $\boldsymbol{\alpha}_0^e$ via $(\varepsilon-1)(\varepsilon+2)^{-1}$ in Eq. (16) | `alpha0_E` |
-| 放射補正 ($G_1$) | $\tfrac{2}{3}[(1-ika)e^{ika}-1]$ | $\boldsymbol{G}_{\rm int}^{ee} + \tfrac{4\pi}{3}\boldsymbol{I} = 4\pi G_1$ | `M_term` |
-| 高次補正 ($G_2$) | $m^2 G_2(ka)$ | 省略 (ref [3] 参照) | **省略** |
-| 全体形 | Eq. (4) self-action | Eq. (17) inverse form | `alpha_E = alpha0_E / (1 - M_term * alpha0_E / V)` |
-| 磁性媒質 | 非対象 | Eq. (15) で $\boldsymbol{\alpha}^m$ も導出 | 非対象 ($\mu=1$) |
+| 役割 | Peltoniemi 1996 | CSR2004 | CR2009 | block-DDA_Py |
+| --- | --- | --- | --- | --- |
+| 静的部分 | $-\tfrac{1}{3}\chi$ in Eq. (4) | Eq. (8): $\alpha_0 = (3V/4\pi)(\varepsilon-1)/(\varepsilon+2)$ | $\boldsymbol{\alpha}_0^e$ in Eq. (16) | `alpha0_E` |
+| 放射補正 ($G_1$) | $\tfrac{2}{3}[(1-ika)e^{ika}-1]$ | Eq. (11): cubic cell 上の $\boldsymbol{G}_{\rm int}^{ee}$ exact | $\boldsymbol{G}_{\rm int}^{ee} + \tfrac{4\pi}{3}\boldsymbol{I} = 4\pi G_1$ | `M_term` |
+| 高次補正 ($G_2$) | $m^2 G_2(ka)$ | (Weyl 評価により暗に含まれる) | 省略 | **省略** |
+| 全体形 | Eq. (4) self-action | Eq. (10) integrated form | Eq. (17) inverse form | `alpha_E = alpha0_E / (1 - M_term * alpha0_E / V)` |
+| 磁性媒質 | 非対象 | 非対象 | Eq. (15) で $\boldsymbol{\alpha}^m$ も導出 | 非対象 ($\mu=1$) |
 
 ### 一文で書くなら
 
@@ -154,9 +161,20 @@ self.alpha_E = alpha0_E / (1 - M_term * alpha0_E / self.element_vol)
 
 ## 関連 references (refs.bib key)
 
-- `ChaumetRahmani2009` — *J. Quant. Spectrosc. Radiat. Transfer* 110(1-2):22-29
-  (DOI: 10.1016/j.jqsrt.2008.09.004)。コード直接出典。
+Citation chain (上流 → 下流):
+
 - `Peltoniemi1996` — *J. Quant. Spectrosc. Radiat. Transfer* 55(5):637-647
-  (DOI: 10.1016/0022-4073(96)00007-6)。$G_1$, $G_2$ 解析評価の歴史的出典。
-- (補足) Doyle 1989 — 等価体積球の prescription の出典。必要なら refs.bib に
-  追加する。
+  (DOI: 10.1016/0022-4073(96)00007-6)。**等価体積球**で self-Green を解析評価
+  した $G_1$, $G_2$ の歴史的出典。
+- `ChaumetSentenacRahmani2004` — *Phys. Rev. E* 70:036606
+  (DOI: 10.1103/PhysRevE.70.036606)。**cubic cell** 上で
+  $\boldsymbol{G}_{\rm int}^{ee}$ を Weyl 展開で**近似なし**に評価 (Eq. 11)。
+  CR2009 ref [3]。
+- `ChaumetRahmani2009` — *J. Quant. Spectrosc. Radiat. Transfer* 110(1-2):22-29
+  (DOI: 10.1016/j.jqsrt.2008.09.004)。CSR2004 を磁性媒質に拡張、Eq. (17) の
+  逆行列形式を確立。**コード直接出典**。
+
+参考:
+
+- (補足) Doyle 1989 — 等価体積球 ($a^3 = 3d^3/4\pi$) の prescription の歴史的
+  出典。必要なら refs.bib に追加する。

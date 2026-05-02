@@ -1,6 +1,6 @@
 # Dipole Polarizability Prescription in `block-DDA_Py`
 
-本コード [bl_dda/scatterer.py](../../bl_dda/scatterer.py) (`set_interaction_matrix`,
+本コード [bl_dda/scatterer.py](../../../bl_dda/scatterer.py) (`set_interaction_matrix`,
 L143-156) で採用している双極子分極率 (dipole polarizability) の数式と、その
 出典である Chaumet & Rahmani 2009 (JQSRT) Eq. (16)-(17) と Peltoniemi 1996
 (JQSRT) の解析的 self-Green 評価との対応関係をまとめる。
@@ -103,7 +103,7 @@ $$
 \boxed{\;4\pi\,G_1(ka) = \frac{8\pi}{3}\Bigl[(1-ika)\,e^{ika} - 1\Bigr]\;}
 $$
 
-これが [scatterer.py:152](../../bl_dda/scatterer.py#L152) の `M_term`:
+これが [scatterer.py:152](../../../bl_dda/scatterer.py#L152) の `M_term`:
 
 ```python
 M_term = (8 * np.pi / 3) * ((1 - 1j * self.k * a) * np.exp(1j * self.k * a) - 1)
@@ -118,7 +118,7 @@ $$
 \frac{4\pi}{3}a^3 = d^3 \;\Longleftrightarrow\; a = \left(\frac{3d^3}{4\pi}\right)^{1/3} = \left(\frac{3}{4\pi}\right)^{1/3} d \approx 0.620\,d
 $$
 
-これが [scatterer.py:151](../../bl_dda/scatterer.py#L151) の:
+これが [scatterer.py:151](../../../bl_dda/scatterer.py#L151) の:
 
 ```python
 a = (3 * self.element_vol / (4 * np.pi)) ** (1 / 3)
@@ -134,7 +134,7 @@ $$
 \;=\;\frac{\alpha_0^e}{\,1 - M_{\rm term}\,\alpha_0^e/V_{\rm cell}\,}
 $$
 
-これが [scatterer.py:148, 153](../../bl_dda/scatterer.py#L148):
+これが [scatterer.py:148, 153](../../../bl_dda/scatterer.py#L148):
 
 ```python
 alpha0_E = (3 / (4 * np.pi)) * ((self.eper_r - 1) / (self.eper_r + 2)) * self.element_vol

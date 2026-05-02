@@ -20,9 +20,9 @@ below isolates the cost difference per physical observable, **at
 matched volume-element count**.
 
 Schema details and source-code pointers: see
-[fig1_description.md](fig1_description.md) §3 (lc / dpl mechanisms),
-[fig2_description.md](fig2_description.md) §3 (RHS-scaling lattice
-table), and [cost_estimates.md](cost_estimates.md) (per-file totals).
+[fig1_description.md](../fig1_description.md) §3 (lc / dpl mechanisms),
+[fig2_description.md](../fig2_description.md) §3 (RHS-scaling lattice
+table), and [cost_estimates.md](../cost_estimates.md) (per-file totals).
 
 ## 1. Notation: volume-element counts vs. unknown counts
 
@@ -77,7 +77,7 @@ $$
 
 — both count *interior particle elements directly*, ignoring vacuum.
 This is the pairing that `dpl_for_slot` (DDA's auto-dpl) calibrates
-against — see [fig1_description.md §3.4](fig1_description.md).
+against — see [fig1_description.md §3.4](../fig1_description.md).
 
 Three different pairings are needed for different cost questions:
 
@@ -149,7 +149,7 @@ $L = N_\alpha N_\beta N_\gamma = 100$).
 
 (Smaller $a_{\rm ve}$ rows for oblate / gre / doublet follow the same
 trend as sphere and are omitted for brevity; full table in
-[notebook Section 6](plot_paper_results.ipynb) cost summary cell.)
+[notebook Section 6](../plot_paper_results.ipynb) cost summary cell.)
 
 **Pattern.**  The VIEM-to-DDA wall-time ratio across all 32 converged
 slots is $t_{\rm V}/t_{\rm D} \approx 2 - 30$, with the spread driven
@@ -205,7 +205,7 @@ Two regimes appear:
   separate near-field block scales weaker in $L$.
 
 Au is reported via VIEM in the paper (planned mitigation — see
-[cost_estimates.md §v0.7.6 findings](cost_estimates.md) item 2).
+[cost_estimates.md §v0.7.6 findings](../cost_estimates.md) item 2).
 
 ## 5. Peak RSS at matched $N_{\rm vol}$
 
@@ -286,7 +286,7 @@ explains why, since the AIM grid is naively *larger* than DDA's
 $N_{\rm cuboid}$.
 
 **AIM grid size.** The production setting
-([run_lc_convergence.jl:42-43](../../../Julia/block-VIEM.jl/viem_results/paper/run_lc_convergence.jl)):
+([run_lc_convergence.jl:42-43](../../../../../Julia/block-VIEM.jl/viem_results/paper/run_lc_convergence.jl)):
 
 ```julia
 const AIM_PITCH_RATIO = 0.5
@@ -475,7 +475,7 @@ $a_{\rm ve} = 0.20$ µm, $L = 100$.)
 *Caveat.* DDA's totals are inflated by its 10 stalled Au slots
 (MAXITER = 200 × full block-MVP cost on the heavy GRE × Au geometry
 contributes ~540 min by itself — see
-[cost_estimates.md §v0.7.6 findings](cost_estimates.md) item 3).
+[cost_estimates.md §v0.7.6 findings](../cost_estimates.md) item 3).
 **Restricted to converged-only slots** the comparison reverses: DDA
 sums to **45.7 min** vs VIEM's **166.9 min**, i.e. DDA is **~3.6×
 faster** end-to-end on the converged subset. The raw aggregate above

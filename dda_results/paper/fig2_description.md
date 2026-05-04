@@ -26,10 +26,12 @@ laboratory-frame / particle-frame discussion (Sec. 2.3): the black
 $+\hat{\bm{z}}$ arrow on each panel is the fixed CAS-v2 incident
 plane-wave propagation direction in the laboratory frame.
 
-## 2. Output file
+## 2. Output files
 
-- **Single PDF**: `dda_results/paper/figures/fig2_target_geometries.pdf`,
-  3 panels arranged in a 1 × 3 layout.
+- **PDF**: `figures/fig2_target_geometries.pdf` (vector, included by
+  the paper).
+- **PNG**: `figures/fig2_target_geometries.png` (raster sibling at
+  `px_per_unit = 2`, for slides / README previews).
 
 ## 3. Generator
 
@@ -46,13 +48,36 @@ discretisation so the wireframe reads cleanly at print resolution
 (see the caption note "visualisation mesh, coarser than the production
 mesh").
 
-The script writes the PDF directly to the path passed on the command
-line:
+The script writes both PDF and PNG (the PNG is auto-generated as a
+sibling whenever the output path ends in `.pdf`):
 
 ```bash
 julia --project=viz viz/visualize_paper_targets.jl \
     /home/moteki/Python_in_WSL/block-DDA_Py/dda_results/paper/figures/fig2_target_geometries.pdf
+# → fig2_target_geometries.pdf  (vector)
+# → fig2_target_geometries.png  (raster, px_per_unit = 2)
 ```
+
+## 3a. Manual finishing (PowerPoint workflow)
+
+The +z axis on each panel is drawn by stage 1 as a plain line
+segment with **no arrowhead** because CairoMakie's 3D cone tip is
+severely foreshortened to a near-flat disk under the camera
+elevation (`π/8` ≈ 22.5°).  Final touch-ups (adding the +z
+arrowheads, any other annotations) are performed manually:
+
+1. Open `figures/fig2_target_geometries.pdf` (or the PNG) in
+   PowerPoint as a picture.
+2. Add the three +z arrowheads using PowerPoint's shape tools.
+3. Export the slide as PDF (or PNG).
+4. Replace `figures/fig2_target_geometries.pdf` with the exported
+   file (preserving the filename so the paper's `\includegraphics`
+   does not need to change).
+
+After any re-render of the Julia script, repeat the manual finishing
+step (the bare PDF will overwrite the annotated one, so keep a
+PowerPoint source file or an exported back-up of the annotated
+version).
 
 ## 4. Visual conventions
 

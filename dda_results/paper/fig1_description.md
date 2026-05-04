@@ -11,7 +11,7 @@ refined. The x-axis is the number of volume elements ($N_{\rm occ}$ for
 DDA, $n_{\rm tet}$ for VIEM); the y-axis is $|X - X^{\rm Mie}| /
 |X^{\rm Mie}|$ for two observables. Used to certify that both solvers
 converge to Mie at the expected polynomial-in-h rates and to bracket the
-discretization error of the production sweep (fig 3).
+discretization error of the production sweep (fig 4).
 
 ## 2. Layout
 
@@ -76,7 +76,7 @@ Coarse → fine (left → right).
 #### DDA "fixed dpl" (this study only)
 
 The dpl convergence study uses **explicit dpl values** rather than the
-`auto` (`dpl_for_slot`, fig 3) or `default` (`dpl=17`, fig 4) mechanisms
+`auto` (`dpl_for_slot`, fig 4) or `default` (`dpl=17`, fig 5) mechanisms
 — it is its own third mode of choosing the lattice, sweeping
 deliberately to map out the convergence curve. Each dpl gives lattice
 spacing
@@ -90,7 +90,7 @@ spanning roughly an order of magnitude in $N_{\rm occ}$.
 #### VIEM "lc factor × adaptive_lc"
 
 The base `adaptive_lc(p; wl_0, m_p_max, N_pw=10)` is the same function
-used in fig 3 / fig 4 production (see [`fig3_description.md §3.4`](fig3_description.md)):
+used in fig 4 / fig 5 production (see [`fig4_description.md §3.4`](fig4_description.md)):
 $$
 \text{lc}_{\rm base} \;=\; \min\!\Bigl(
     \tfrac{\lambda_0}{|m_p|_{\max}\cdot 10},\;
@@ -107,7 +107,7 @@ $$
 
 ### 3.4 Solver
 
-- **Method**: block-GMRES, unpreconditioned (same as fig 3 and fig 4).
+- **Method**: block-GMRES, unpreconditioned (same as fig 4 and fig 5).
   - DDA: `bl_krylov.bl_gmres_mvp_fft`
   - VIEM: `BlockVIEM.block_gmres` (`:aim_gmres` variant)
 - **Tolerance**: $\|R\|_F / \|B\|_F < 10^{-5}$.
@@ -164,7 +164,7 @@ Relative error: $\varepsilon = |X - X^{\rm Mie}| / |X^{\rm Mie}|$.
     for $\varepsilon^{\rm ref} \in
     \{10^{-3},\,10^{-2.5},\,10^{-2},\,10^{-1.5},\,10^{-1}\}$
     (= `PHASE4_SLOPE_REF_YS`).
-  - Identical on every panel; same drawing style as fig 2's
+  - Identical on every panel; same drawing style as fig 3's
     slope-$-2/3$ grid.
   - Replaces the previous horizontal guide lines at
     $\varepsilon = 10^{-2}$ and $10^{-3}$ — the slope grids subsume
@@ -174,7 +174,7 @@ Relative error: $\varepsilon = |X - X^{\rm Mie}| / |X^{\rm Mie}|$.
 - Both axes log-scaled.
 - **Layout**: `figsize=(11, 5.8)` for the 1×3 grid, with each axis
   forced to a unit box-aspect via `ax.set_box_aspect(1.0)` so the
-  panels render as **squares** — matching fig 2's per-panel aspect.
+  panels render as **squares** — matching fig 3's per-panel aspect.
   The taller-than-wide aspect of the previous `figsize=(11, 5)`
   layout has been corrected.
 - **Fixed x-axis range** $n \in (3\times 10^1,\,10^5)$ via
@@ -213,7 +213,7 @@ The cause is *not* a method-vs-method issue but the combination of:
 2. Single-orientation $L = 1$ (no block-Krylov subspace amortization);
 3. **Axis-aligned ZYZ-identity orientation** — incidence along $+z$ coincides with the cubic lattice's $\hat{z}$ principal axis. The lattice's $C_4$ rotational symmetry combines with the LSP modes' polarization structure to produce near-degenerate operator eigenvalues.
 
-A non-axis-aligned orientation (e.g. the first uniform-on-SO(3) draw used by `run_rhs_scaling.py`) breaks the symmetry and would let DDA converge at most or all dpl values for Au; this is *not* part of the current saved data and is left for future runs (see [`fig4_description.md`](fig4_description.md) for the practical implications).
+A non-axis-aligned orientation (e.g. the first uniform-on-SO(3) draw used by `run_rhs_scaling.py`) breaks the symmetry and would let DDA converge at most or all dpl values for Au; this is *not* part of the current saved data and is left for future runs (see [`fig5_description.md`](fig5_description.md) for the practical implications).
 
 ## 6. Convergence rate and scaling laws
 
@@ -277,7 +277,7 @@ In short, **DDA does not exhibit a universal $h^p$ scaling on this convergence s
 
 ### 6.3 Practical implication
 
-For the paper-production sweep at $r_{\rm ve}=0.1$ (fig 3 / fig 1 production lattice marked by the gray band):
+For the paper-production sweep at $r_{\rm ve}=0.1$ (fig 4 / fig 1 production lattice marked by the gray band):
 
 - VIEM error sits on the universal $h^2$ curve and is predictable from $n_{\rm tet}$ alone — at $n_{\rm tet}\!\approx\!700$ (band center for n20), $\varepsilon \approx 1\%$ for cross sections.
 - DDA error is dominated by the shape-step contribution at $N_{\rm occ}\!\approx\!700$, giving $\varepsilon \approx 2$–$3\%$ — about $2\!-\!3\times$ worse than VIEM at the same lattice count, even though the two solvers solve the same physics.
@@ -293,6 +293,6 @@ This $\sim 2$–$3\times$ DDA-vs-VIEM accuracy gap at the same $N_{\rm vol}$ is 
 
 ## 7. Cross-references
 
-- [`fig3_description.md`](fig3_description.md) — production sweep (auto-dpl / adaptive-lc); the band on each fig 1 panel marks where the production lattice sits on this convergence curve.
-- [`fig4_description.md`](fig4_description.md) — RHS-scaling (default-dpl on DDA / adaptive-lc on VIEM); same lattice mechanism on VIEM as fig 1's `lc_factor=1.0` point.
-- [`fig4_description.md`](fig4_description.md) — discusses the production-vs-RHS-scaling Au discrepancy; the lattice-resolution sensitivity exposed here in fig 1 (Au DDA non-converged at every dpl with axis-aligned orientation) is the same physics that makes Au touchy in fig 3.
+- [`fig4_description.md`](fig4_description.md) — production sweep (auto-dpl / adaptive-lc); the band on each fig 1 panel marks where the production lattice sits on this convergence curve.
+- [`fig5_description.md`](fig5_description.md) — RHS-scaling (default-dpl on DDA / adaptive-lc on VIEM); same lattice mechanism on VIEM as fig 1's `lc_factor=1.0` point.
+- [`fig5_description.md`](fig5_description.md) — discusses the production-vs-RHS-scaling Au discrepancy; the lattice-resolution sensitivity exposed here in fig 1 (Au DDA non-converged at every dpl with axis-aligned orientation) is the same physics that makes Au touchy in fig 4.

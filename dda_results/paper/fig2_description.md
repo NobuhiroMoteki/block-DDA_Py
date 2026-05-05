@@ -58,26 +58,56 @@ julia --project=viz viz/visualize_paper_targets.jl \
 # → fig2_target_geometries.png  (raster, px_per_unit = 2)
 ```
 
-## 3a. Manual finishing (PowerPoint workflow)
+## 3a. Manual finishing (PDF-editor workflow + flatten)
 
 The +z axis on each panel is drawn by stage 1 as a plain line
 segment with **no arrowhead** because CairoMakie's 3D cone tip is
 severely foreshortened to a near-flat disk under the camera
-elevation (`π/8` ≈ 22.5°).  Final touch-ups (adding the +z
-arrowheads, any other annotations) are performed manually:
+elevation (`π/8` ≈ 22.5°).  The +z arrowheads are added by hand
+(typically as line annotations) using a PDF editor and saved as
+`figures/hand-edited/fig2_target_geometries.pdf`.
 
-1. Open `figures/fig2_target_geometries.pdf` (or the PNG) in
-   PowerPoint as a picture.
-2. Add the three +z arrowheads using PowerPoint's shape tools.
-3. Export the slide as PDF (or PNG).
-4. Replace `figures/fig2_target_geometries.pdf` with the exported
-   file (preserving the filename so the paper's `\includegraphics`
-   does not need to change).
+**Important: PDF annotations must be flattened before LaTeX inclusion.**
+PDF editors save hand-drawn lines as `/Annot` objects (subtype
+`/Line`, `/Polyline`, etc.) that live outside the page content
+stream.  PDF *viewers* (Acrobat, Foxit, Preview) draw annotations
+on top of the page; LaTeX's `\includegraphics`, `pdftoppm`, and
+similar embedding tools read **only the page content stream** and
+silently drop the annotations — so the arrowheads visible in the
+viewer disappear in the compiled paper.
 
-After any re-render of the Julia script, repeat the manual finishing
-step (the bare PDF will overwrite the annotated one, so keep a
-PowerPoint source file or an exported back-up of the annotated
-version).
+The fix is a one-line Ghostscript round-trip that bakes the
+annotations into ordinary page graphics:
+
+```bash
+cd dda_results/paper/figures/hand-edited
+pdf2ps fig2_target_geometries.pdf /tmp/fig2_flat.ps
+ps2pdf /tmp/fig2_flat.ps fig2_target_geometries_flat.pdf
+```
+
+The paper's `\includegraphics{...}` references the **flattened**
+sibling `hand-edited/fig2_target_geometries_flat.pdf`, so the
+edit-and-flatten loop is:
+
+1. Re-render the bare figure with the Julia script (stage 1).
+2. Re-open `hand-edited/fig2_target_geometries.pdf` in your PDF
+   editor and re-add the +z arrowheads (or update them).
+3. Run the flatten command above to refresh
+   `fig2_target_geometries_flat.pdf`.
+4. Rebuild `paper.pdf` — the new arrowheads are now embedded in
+   the included PDF page content, so they appear in the manuscript.
+
+You can verify whether a hand-edited PDF still has un-flattened
+annotations with:
+
+```bash
+python3 -c "from pypdf import PdfReader; \
+  p = PdfReader('hand-edited/fig2_target_geometries.pdf').pages[0]; \
+  print('annots:', len(p['/Annots']) if '/Annots' in p else 0)"
+```
+
+A non-zero count means the file still needs flattening before its
+content will appear in the paper.
 
 ## 4. Visual conventions
 

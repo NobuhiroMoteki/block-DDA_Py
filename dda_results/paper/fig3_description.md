@@ -7,7 +7,7 @@ This document records the exact computation conditions behind
 
 Quantify how the **VIEM** solver's discretization error shrinks under mesh
 refinement on the non-sphere production shapes (oblate spheroid, GRE),
-extending fig 1's sphere-only convergence story to the rest of the paper's
+extending fig 2's sphere-only convergence story to the rest of the paper's
 target catalogue.
 
 Two reference choices are overlaid where data permits:
@@ -62,7 +62,7 @@ where no exact reference is available.
 ### 3.1 Particle slot
 
 - Shapes: **oblate (3:3:1) and GRE ($\beta_{\rm gre}=0.2$)**. Sphere is
-  covered by fig 1; doublet has no `convergence_doublet_*.hdf5` in the
+  covered by fig 2; doublet has no `convergence_doublet_*.hdf5` in the
   paper-production data tree (the §8 mesh-refinement study in
   `~/Julia/block-VIEM.jl/docs/benchmark_results.md` lives in
   `benchmarks/cas_v2/doublet_mstm/` and uses a different protocol).
@@ -74,7 +74,7 @@ where no exact reference is available.
 ### 3.2 Orientation
 
 **$L = 1$, single orientation = ZYZ identity** $(\alpha, \beta, \gamma) = (0, 0, 0)$
-— same as fig 1 / sphere. This is the only orientation for which a
+— same as fig 2 / sphere. This is the only orientation for which a
 convergence sweep was run on the non-sphere shapes (see
 [`viem_results/paper/run_lc_convergence.jl:47`](../../../../Julia/block-VIEM.jl/viem_results/paper/run_lc_convergence.jl)).
 
@@ -88,7 +88,7 @@ VIEM `lc_factor` × `adaptive_lc(...)`:
 | gre    | $\{1.5,\ 1.0,\ 0.7\}$              | 3 | $0.70$ |
 
 The base `adaptive_lc(p; wl_0, m_p_max, N_pw=10)` is the same one used by
-fig 1 / fig 4 — see [`fig4_description.md §3.4`](fig4_description.md).
+fig 2 / fig 4 — see [`fig4_description.md §3.4`](fig4_description.md).
 
 The GRE sweep stops at $\ell_c^{\rm factor}=0.7$ because (a) the per-feature
 correlation length $0.3 c / 3$ already controls the GRE mesh density
@@ -132,7 +132,7 @@ spawn-storm threshold from prior FFTW sweeps).
 ### 3.5 Solver
 
 - **Method**: block-GMRES, unpreconditioned —
-  `BlockVIEM.block_gmres` (`:aim_gmres` variant), same as fig 1 / 2 / 3.
+  `BlockVIEM.block_gmres` (`:aim_gmres` variant), same as fig 2 / 2 / 3.
   Incremental block-Givens QR triangularises the block-Hessenberg
   factor of block-Arnoldi for the least-squares minimisation step.
 - **Tolerance**: $\|R\|_F / \|B\|_F < 10^{-5}$.
@@ -212,7 +212,7 @@ Limited to **one observable** for editorial focus:
 
 Convergence universality across multiple observables ($\{Q_{\rm ext},
 Q_{\rm abs}, |S_{\rm fw}^{\theta}|, |S_{\rm bk}|\}$) is already covered
-by fig 1 (sphere, Mie reference). The Galerkin theory of linear
+by fig 2 (sphere, Mie reference). The Galerkin theory of linear
 functionals on the SWG basis (Markkanen et al. 2014) predicts that
 **every** bounded linear functional of the SWG solution converges at
 the same $h^2$ rate, so demonstrating shape-universality of that rate
@@ -257,7 +257,7 @@ as expected). MSTM doublet refs (`run_mstm_reference.jl`) used the
 correct OCBS formula throughout and are unaffected.
 
 **Why $Q_{\rm ext}$ and $Q_{\rm abs}$ are excluded.** Both are redundant
-with fig 1's sphere convergence panels, which already establish the
+with fig 2's sphere convergence panels, which already establish the
 $h^2$ rate on the cross-section observables. $Q_{\rm abs}$ on n15
 additionally suffers from a small-Im$(m_p)$ noise floor that distorts
 the relative-error ratio.
@@ -284,7 +284,7 @@ methods. With only one observable the line **colour** now denotes the
   (`axvspan`, `alpha = 0.18`, `lw = 0`, `zorder = 0`) centered on the
   production sweep $n_{\rm tet}$ for the same particle slot at
   $r_{\rm ve}=0.1\,\mu$m (= what `adaptive_lc` selects), with
-  half-width $0.075$ decades in $\log_{10}$. Matches fig 1's
+  half-width $0.075$ decades in $\log_{10}$. Matches fig 2's
   production-sweep band style exactly; fig 3 is VIEM-only so the band
   is centered on a single value rather than spanning DDA $n_{\rm occ}$
   to VIEM $n_{\rm tet}$.
@@ -320,13 +320,13 @@ methods. With only one observable the line **colour** now denotes the
     — the visible slope is steeper than $-2/3$, which the grid makes
     immediately obvious.
 - **Horizontal guides**: $\varepsilon = 10^{-2}$ and $10^{-3}$
-  (gray dotted), same as fig 1.
+  (gray dotted), same as fig 2.
 - Both axes log-scaled. **x-axis lower bound clipped to $10^3$** via
   `axes[0,0].set_xlim(left=1e3)` (`sharex=True` propagates to all
   panels). The smallest VIEM convergence-sweep $n_{\rm tet}$ is 1 751
   (oblate × n15), so this lower bound trims an empty leading region
   rather than cropping any data point.
-- **x-axis label** is `'Number of vol. elements'`, identical to fig 1.
+- **x-axis label** is `'Number of vol. elements'`, identical to fig 2.
   The DDA / VIEM cross-comparison framing is preserved even though
   fig 3 plots only VIEM, so the same "n_dof or n_tet" reading applies.
 - **oblate × Au panel xlabel + tick labels.** With the GRE × Au panel
@@ -339,7 +339,7 @@ methods. With only one observable the line **colour** now denotes the
 - Layout: `figsize=(11, 8)`, `sharex=sharey=True`, suptitle on top
   with the relative-error formula spelled out in inline LaTeX
   ($|S_{\rm fw}^{\theta}|$ substituted for the generic $X$). The
-  per-panel aspect (~$3.67 \times 4$) matches fig 1's `(11, 4)` 1×3
+  per-panel aspect (~$3.67 \times 4$) matches fig 2's `(11, 4)` 1×3
   layout. Row gap is tightened with `tight_layout(h_pad=0.3)`
   (default is ~1.0 in font-size units).
 - **y-axis label** also substitutes $X \to |S_{\rm fw}^{\theta}|$
@@ -348,7 +348,7 @@ methods. With only one observable the line **colour** now denotes the
 - Single bottom-aligned legend (`ncol=3`, `bbox_to_anchor=(0.5, -0.07)`)
   collecting (i) the two reference marker / linestyle / colour pairs,
   (ii) the slope $-2/3$ dotted-line entry, and (iii) the gray
-  production-sweep `Patch` (matching fig 1's legend style). The
+  production-sweep `Patch` (matching fig 2's legend style). The
   stalled `×` legend entry was removed: with Au panels treated as
   gate-pass panel-wide and non-Au panels fully converged, no point in
   fig 3 ever uses the stalled glyph.
@@ -385,13 +385,13 @@ in Jupyter / VS Code, edit the Phase 7 cell directly, save, re-run
 the cell. (Remember to sync `_phase7_inject.py` afterwards if the
 edit is to be preserved as the canonical source.)
 
-All other figures (fig 1 / fig 3 / fig 4) live entirely inside the
+All other figures (fig 2 / fig 3 / fig 4) live entirely inside the
 notebook (no separate inject scripts), so direct cell-editing in
 Jupyter / VS Code is the standard workflow for them.
 
 ## 6. Convergence rate and scaling laws
 
-### 6.1 Theoretical expectation — same as fig 1 §6.1
+### 6.1 Theoretical expectation — same as fig 2 §6.1
 
 The SWG basis is piecewise-linear (polynomial order $p=1$). Galerkin
 discretization of the volume integral equation gives
@@ -420,10 +420,10 @@ on $\log\varepsilon$ vs $\log n_{\rm tet}$:
 Empirical slopes cluster around the theoretical $-2/3$ on every
 non-sphere panel where the solver converged, **independently of
 shape (oblate / GRE) and reference choice (TMM / Richardson)**.
-Combined with fig 1's sphere convergence on $\{Q_{\rm ext}, Q_{\rm abs},
+Combined with fig 2's sphere convergence on $\{Q_{\rm ext}, Q_{\rm abs},
 |S_{\rm fw}^{\theta}|, |S_{\rm bk}|\}$, this establishes:
 
-1. **Observable-universality** of the SWG $h^2$ rate (fig 1, sphere on
+1. **Observable-universality** of the SWG $h^2$ rate (fig 2, sphere on
    4 obs) — implied by Galerkin theory of bounded linear functionals;
 2. **Shape-universality** of the same $h^2$ rate on the headline
    observable $|S_{\rm fw}^{\theta}|$ (fig 3, oblate + GRE).
@@ -475,7 +475,7 @@ $10^2$–$10^3$ range — the spectral picture in
 [`fig5_description.md`](fig5_description.md) — but only a small
 sub-cluster of eigenmodes couples strongly to the far-field functional,
 so empirically $|\xi(h)| \approx 10\,\|r\|_F/\|b\|_F$ in observable
-units (calibrated against fig 1 / fig 4 sphere×Au discrepancies between
+units (calibrated against fig 2 / fig 4 sphere×Au discrepancies between
 solver and Mie at known $\|r\|/\|b\|$).
 
 **Threshold derivation.** For the slope-$-2/3$ visual on a panel to be
@@ -533,7 +533,7 @@ block-Krylov treatment as GRE × Au, both for symmetry of methodology
 and to push the finest pair to $7.0\times 10^{-5}$ / $2.0\times 10^{-4}$
 — two orders of magnitude inside the gate, leaving virtually no
 contamination on the Richardson reference. Sphere × Au sits between
-the two ($\sim 5\times 10^{-4}$ at every $\ell_c$, fig 1) because its
+the two ($\sim 5\times 10^{-4}$ at every $\ell_c$, fig 2) because its
 LSP spectrum is degenerate and adding mesh elements neither resolves
 new modes nor improves resolution of the existing ones.
 
@@ -572,7 +572,7 @@ corresponding *absolute* error stays well-behaved.
   (id `fig4-conv`).
 - Output HDF5:
   `~/Julia/block-VIEM.jl/viem_results/paper/convergence_{oblate,gre}_<mat>.hdf5`,
-  loaded via `_plot_io.load_convergence` (same loader as fig 1's sphere
+  loaded via `_plot_io.load_convergence` (same loader as fig 2's sphere
   convergence — schema is shape-agnostic).
 
 ## 8. Cross-references
@@ -602,5 +602,5 @@ corresponding *absolute* error stays well-behaved.
   asymptotic-rate analysis.
 - M. A. Yurkin, A. G. Hoekstra,
   *J. Quant. Spectrosc. Radiat. Transf.* **106**, 558–589 (2007).
-  — DDA convergence reference used to contrast against fig 1's
+  — DDA convergence reference used to contrast against fig 2's
   sphere VIEM rate.

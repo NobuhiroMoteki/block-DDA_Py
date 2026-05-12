@@ -9,7 +9,7 @@ and r_ve = 0.10 um, plus the lab-frame x/y/z arrows drawn via
 matplotlib's Arrow3D (FancyArrowPatch projected to 3D), exactly the
 same rendering used in block-DDA_Py/run_gaussian_ellipsoid.ipynb.
 
-Output: dda_results/paper/figures/fig2_target_geometries.pdf
+Output: dda_results/paper/figures/fig1_target_geometries.pdf
 """
 from __future__ import annotations
 
@@ -239,5 +239,5 @@ def render_combined(out_path: Path, r_ve: float = 0.10):
 
 if __name__ == '__main__':
     out = (Path(__file__).resolve().parent
-           / 'figures' / 'fig2_target_geometries.pdf')
+           / 'figures' / 'fig1_target_geometries.pdf')
     render_combined(out)

@@ -258,7 +258,7 @@ production sweep's $\alpha=\gamma=0$ spheroid block.
   (`bl_krylov.bl_gmres_mvp_fft` on the DDA side,
   `BlockVIEM.block_gmres` with `:aim_gmres` on the VIEM side).
   Block-Hessenberg least-squares minimisation by incremental
-  block-Givens QR (same as fig 1 / fig 3).
+  block-Givens QR (same as fig 2 / fig 3).
 - **Tolerance**: $\|R\|_F / \|B\|_F < 10^{-5}$.
 - **Maximum iterations**: 200.
 - **Residual gate** (Au plasmonic): `PHASE5_RESIDUAL_THRESHOLD` =

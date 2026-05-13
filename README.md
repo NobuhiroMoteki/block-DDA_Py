@@ -256,6 +256,18 @@ Spheroid mode reduces both peak memory and computation time by a factor of **1/4
 | User specifies | `num_orientations` (total count) | `N_alpha_ori`, `N_beta_ori`, `N_gamma_ori` (grid divisions) |
 | Polar angle (beta) | `Uniform(0, π)` (biased) | `cos(β)` equally spaced in (−1, 1) (equal-area) |
 
+### Spheroid parameter sweep (v0.7.1 – v0.7.4)
+- v0.7.1: Spheroid-mode parameter-sweep driver with HDF5 output
+- v0.7.2: Multi-wavelength support added to the sweep
+- v0.7.3: Sweep grid range refinements; `.h5` added to `.gitignore`
+- v0.7.4: Interactive notebook replaces the read-example script for HDF5 inspection
+
+### Paper-production sweep and solver upgrades (v0.7.5 – v0.7.8)
+- v0.7.5: Production-sweep infrastructure; DDA ↔ VIEM volume-element parity rule
+- v0.7.6: Auto-`dpl` per particle slot; per-iteration residual history stored; incremental-QR block-GMRES; benchmark material `n20` (m_p = 2.0) added
+- v0.7.7: Bundled paper-production sweep results under `dda_results/paper/`
+- v0.7.8: Manuscript-release snapshot for the JQSRT submission
+
 ### Environment
 - **Python**: 3.12 (Windows) → **3.13 (Linux/WSL2)**
 - **Virtual environment**: `myenv` (Windows) → `.venv` (Linux, managed by `uv`)

@@ -38,3 +38,6 @@ old/
 
 # Paper-production results — committed for reproducibility (~1 MB total)
 !dda_results/paper/*.hdf5
+
+# Unpublished manuscript draft — kept local, not tracked
+dda_results/paper/manuscript/

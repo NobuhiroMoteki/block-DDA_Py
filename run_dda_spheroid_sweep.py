@@ -11,9 +11,14 @@ own HDF5 group (e.g. wl_0p453/); shared grid axes live at the root level.
 Output: dda_results/dda_results_spheroid_sweep.h5
 """
 
+import argparse
 import itertools
 import datetime
+import hashlib
+import os
 import pathlib
+import struct
+import subprocess
 import numpy as np
 import h5py
 
@@ -25,14 +30,39 @@ from bl_dda.scatterer import Target, IncidentField, DiscreteDipoles
 # ══════════════════════════════════════════════════════════════════════════════
 RNG_SEED    = 12345
 MAX_TRY     = 1
-OUTPUT_FILE = "dda_results/dda_results_spheroid_sweep.h5"
 
-# (wavelength [um], medium refractive index) pairs
-MEDIUM_CONDITIONS = [
-    (0.453, 1.0),
-    (0.638, 1.0),
-    (0.834, 1.0),
-]
+# Host-medium preset. Thin CLI (for the pcas_lut_schema adapter): --preset and
+# --output; falls back to the DDA_SWEEP_PRESET env var, then "air". No args (or
+# preset=air) reproduces the original run byte-for-byte; "liquid" targets the
+# liquid CAS-v2 setup (water host at the two operating wavelengths).
+_parser = argparse.ArgumentParser(
+    description="block-DDA_Py spheroid parameter sweep (pcas_lut_schema producer)")
+_parser.add_argument("--preset", choices=["air", "liquid"],
+                     default=os.environ.get("DDA_SWEEP_PRESET", "air"))
+_parser.add_argument("--output", default=None, help="override the output HDF5 path")
+_cli, _ = _parser.parse_known_args()
+
+_PRESET = _cli.preset.lower()
+if _PRESET == "air":
+    OUTPUT_FILE = "dda_results/dda_results_spheroid_sweep.h5"
+    # (wavelength [um], medium refractive index) pairs
+    MEDIUM_CONDITIONS = [
+        (0.453, 1.0),
+        (0.638, 1.0),
+        (0.834, 1.0),
+    ]
+elif _PRESET == "liquid":
+    OUTPUT_FILE = "dda_results/dda_results_spheroid_sweep_liquid.h5"
+    # Water host m_m at the two CAS-v2 wavelengths (637 nm, 773 nm).
+    MEDIUM_CONDITIONS = [
+        (0.637, 1.3315),
+        (0.773, 1.3300),
+    ]
+else:
+    raise SystemExit(f"unknown preset {_PRESET!r} (use 'air' or 'liquid')")
+
+if _cli.output is not None:
+    OUTPUT_FILE = _cli.output
 
 M_IMAG = 0.0     # imaginary part of particle refractive index (fixed)
 
@@ -158,6 +188,73 @@ def _run_dda_spheroid(target, wl_0, m_m, cos_theta_o_half, phi_o):
     return S_fw_theta, S_fw_phi, True
 
 
+# ── provenance (pcas_lut_schema contract) ────────────────────────────────────
+
+# vendored from pcas_lut_schema/reference/canonical_hash.py (contract v0.1.0)
+# language-independent, bit-exact byte encoding; do not edit — re-vendor from source.
+def _canonical_encode(v):
+    if v is None:
+        return b"n;"
+    if isinstance(v, bool):
+        return b"b1;" if v else b"b0;"
+    if isinstance(v, int):
+        return b"i" + str(v).encode("ascii") + b";"
+    if isinstance(v, float):
+        return b"f" + struct.pack(">d", v)
+    if isinstance(v, str):
+        b = v.encode("utf-8")
+        return b"s" + str(len(b)).encode("ascii") + b":" + b
+    if isinstance(v, (list, tuple)):
+        return b"l" + str(len(v)).encode("ascii") + b":" + b"".join(_canonical_encode(x) for x in v)
+    if isinstance(v, dict):
+        items = sorted(v.items(), key=lambda kv: str(kv[0]))
+        body = b"".join(_canonical_encode(str(k)) + _canonical_encode(val) for k, val in items)
+        return b"d" + str(len(items)).encode("ascii") + b":" + body
+    raise TypeError(f"canonical_hash: unsupported type {type(v).__name__}")
+
+
+def _provenance_attrs():
+    """Provenance block required by the pcas_lut_schema contract (v0.1.0).
+
+    Records the producer git SHA, a dirty-tree flag (tracked files only), the
+    canonical config hash (contract byte encoding), and a UTC timestamp, so a
+    generated LUT is traceable to the exact producer version and settings.
+    """
+    repo_dir = pathlib.Path(__file__).resolve().parent
+
+    def _git(*args):
+        try:
+            return subprocess.check_output(
+                ["git", "-C", str(repo_dir), *args],
+                stderr=subprocess.DEVNULL).decode().strip()
+        except Exception:
+            return ""
+
+    config = {
+        "preset": _PRESET,
+        "medium_conditions": MEDIUM_CONDITIONS,
+        "m_imag": M_IMAG,
+        "d_ve_range": D_VE_RANGE,
+        "ri_real_range": RI_REAL_RANGE,
+        "log10_ar_range": LOG10_AR_RANGE,
+        "n_cos_theta_o_half": N_COS_THETA_O_HALF,
+        "n_phi_o": N_PHI_O,
+        "rng_seed": RNG_SEED,
+    }
+    config_hash = hashlib.sha256(_canonical_encode(config)).hexdigest()
+
+    return {
+        "producer_repo":    "block-DDA_Py",
+        "producer_version": "0.7.2",
+        "git_sha":          _git("rev-parse", "HEAD"),
+        # tracked-file changes only; untracked artifacts do not count as dirty
+        "git_dirty":        bool(_git("status", "--porcelain", "--untracked-files=no")),
+        "contract_version": "0.1.0",
+        "config_hash":      config_hash,
+        "created_utc":      datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    }
+
+
 # ── HDF5 file creation ───────────────────────────────────────────────────────
 
 def _create_h5(filepath):
@@ -172,6 +269,11 @@ def _create_h5(filepath):
         f.attrs['rng_seed']          = RNG_SEED
         f.attrs['solver_tol']        = 1e-2
         f.attrs['block_dda_version'] = '0.7.2'
+
+        # Provenance block (pcas_lut_schema contract) — additive '/provenance' group
+        prov = f.create_group("provenance")
+        for k, v in _provenance_attrs().items():
+            prov.attrs[k] = v
 
         # Shared grid axis arrays (at root)
         f.create_dataset("D_ve_grid",              data=D_ve_grid,              dtype=np.float64)

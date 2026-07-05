@@ -11,6 +11,7 @@ own HDF5 group (e.g. wl_0p453/); shared grid axes live at the root level.
 Output: dda_results/dda_results_spheroid_sweep.h5
 """
 
+import argparse
 import itertools
 import datetime
 import hashlib
@@ -30,10 +31,18 @@ from bl_dda.scatterer import Target, IncidentField, DiscreteDipoles
 RNG_SEED    = 12345
 MAX_TRY     = 1
 
-# Host-medium preset, selected via env var DDA_SWEEP_PRESET.
-# Default "air" reproduces the original run byte-for-byte; "liquid" targets
-# the liquid CAS-v2 setup (water host at the two operating wavelengths).
-_PRESET = os.environ.get("DDA_SWEEP_PRESET", "air").lower()
+# Host-medium preset. Thin CLI (for the pcas_lut_schema adapter): --preset and
+# --output; falls back to the DDA_SWEEP_PRESET env var, then "air". No args (or
+# preset=air) reproduces the original run byte-for-byte; "liquid" targets the
+# liquid CAS-v2 setup (water host at the two operating wavelengths).
+_parser = argparse.ArgumentParser(
+    description="block-DDA_Py spheroid parameter sweep (pcas_lut_schema producer)")
+_parser.add_argument("--preset", choices=["air", "liquid"],
+                     default=os.environ.get("DDA_SWEEP_PRESET", "air"))
+_parser.add_argument("--output", default=None, help="override the output HDF5 path")
+_cli, _ = _parser.parse_known_args()
+
+_PRESET = _cli.preset.lower()
 if _PRESET == "air":
     OUTPUT_FILE = "dda_results/dda_results_spheroid_sweep.h5"
     # (wavelength [um], medium refractive index) pairs
@@ -50,7 +59,10 @@ elif _PRESET == "liquid":
         (0.773, 1.3300),
     ]
 else:
-    raise SystemExit(f"unknown DDA_SWEEP_PRESET={_PRESET!r} (use 'air' or 'liquid')")
+    raise SystemExit(f"unknown preset {_PRESET!r} (use 'air' or 'liquid')")
+
+if _cli.output is not None:
+    OUTPUT_FILE = _cli.output
 
 M_IMAG = 0.0     # imaginary part of particle refractive index (fixed)
 

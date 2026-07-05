@@ -14,9 +14,9 @@ Output: dda_results/dda_results_spheroid_sweep.h5
 import itertools
 import datetime
 import hashlib
-import json
 import os
 import pathlib
+import struct
 import subprocess
 import numpy as np
 import h5py
@@ -178,12 +178,35 @@ def _run_dda_spheroid(target, wl_0, m_m, cos_theta_o_half, phi_o):
 
 # ── provenance (pcas_lut_schema contract) ────────────────────────────────────
 
+# vendored from pcas_lut_schema/reference/canonical_hash.py (contract v0.1.0)
+# language-independent, bit-exact byte encoding; do not edit — re-vendor from source.
+def _canonical_encode(v):
+    if v is None:
+        return b"n;"
+    if isinstance(v, bool):
+        return b"b1;" if v else b"b0;"
+    if isinstance(v, int):
+        return b"i" + str(v).encode("ascii") + b";"
+    if isinstance(v, float):
+        return b"f" + struct.pack(">d", v)
+    if isinstance(v, str):
+        b = v.encode("utf-8")
+        return b"s" + str(len(b)).encode("ascii") + b":" + b
+    if isinstance(v, (list, tuple)):
+        return b"l" + str(len(v)).encode("ascii") + b":" + b"".join(_canonical_encode(x) for x in v)
+    if isinstance(v, dict):
+        items = sorted(v.items(), key=lambda kv: str(kv[0]))
+        body = b"".join(_canonical_encode(str(k)) + _canonical_encode(val) for k, val in items)
+        return b"d" + str(len(items)).encode("ascii") + b":" + body
+    raise TypeError(f"canonical_hash: unsupported type {type(v).__name__}")
+
+
 def _provenance_attrs():
     """Provenance block required by the pcas_lut_schema contract (v0.1.0).
 
-    Records the producer git SHA, a dirty-tree flag (tracked files only), a
-    hash of the canonicalized run config, and a UTC timestamp, so a generated
-    LUT is traceable to the exact producer version and settings.
+    Records the producer git SHA, a dirty-tree flag (tracked files only), the
+    canonical config hash (contract byte encoding), and a UTC timestamp, so a
+    generated LUT is traceable to the exact producer version and settings.
     """
     repo_dir = pathlib.Path(__file__).resolve().parent
 
@@ -206,8 +229,7 @@ def _provenance_attrs():
         "n_phi_o": N_PHI_O,
         "rng_seed": RNG_SEED,
     }
-    config_hash = hashlib.sha256(
-        json.dumps(config, sort_keys=True).encode()).hexdigest()
+    config_hash = hashlib.sha256(_canonical_encode(config)).hexdigest()
 
     return {
         "producer_repo":    "block-DDA_Py",

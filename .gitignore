@@ -41,3 +41,7 @@ old/
 
 # Unpublished manuscript draft — kept local, not tracked
 dda_results/paper/manuscript/
+
+# untracked paper artifacts (kept locally, not versioned)
+dda_results/paper/*.zip
+dda_results/paper/reviewer_comments_*.pdf

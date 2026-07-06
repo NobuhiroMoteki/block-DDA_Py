@@ -1,6 +1,6 @@
 """Spheroid-only DDA parameter sweep (multi-wavelength).
 
-Sweeps over (wl_0, m_m) pairs x D_ve x RI_real x log10(AR) on a regular grid.
+Sweeps over (wl_0, m_m) pairs x log10(D_ve) x RI_real x log10(AR) on a regular grid.
 Orientations: (cos_theta_o_half [0,1], phi_o [0,pi]) — reduced domain.
 Analytical expansion from beta-only DDA solves is applied before writing.
 
@@ -66,10 +66,12 @@ if _cli.output is not None:
 
 M_IMAG = 0.0     # imaginary part of particle refractive index (fixed)
 
-# Swept parameters: (min, max, N_grid)  — all grids are equidistant
-D_VE_RANGE     = (0.26, 0.56, 16)      # volume-equivalent diameter [um]
-RI_REAL_RANGE  = (1.2, 1.7, 21)      # Re(m_p)
-LOG10_AR_RANGE = (-0.8, 0.8, 17)     # log10(AR), AR = bc_ratio
+# Swept parameters: (min, max, N_grid).  D_ve is LOG10-equidistant (stored as the
+# log_D_ve_grid axis); RI_real and log_AR are linear-equidistant.
+D_VE_RANGE     = (0.20, 1.20, 50)      # volume-equivalent diameter [um] endpoints; log10-spaced
+D_VE_SPACING   = "log10"               # grid spacing for D_ve: "log10" -> log_D_ve_grid axis
+RI_REAL_RANGE  = (1.35, 1.70, 15)    # Re(m_p), 0.025 step
+LOG10_AR_RANGE = (0.0, 1.35, 14)     # log10(AR), AR = b/c = 1/beta; oblate-only (beta 1.0 -> 0.045)
 
 # Orientation grid on reduced domain
 N_COS_THETA_O_HALF = 13   # cos(theta_o) in [0, 1], equidistant
@@ -87,7 +89,11 @@ def _wl_group_name(wl_0: float) -> str:
 
 
 # ── grid generation ──────────────────────────────────────────────────────────
-D_ve_grid     = np.linspace(*D_VE_RANGE)                     # shape (N_Dve,)
+# D_ve is log10-equidistant: the stored axis is log_D_ve_grid (equidistant, per
+# the pcas_lut_schema gridded-spheroid contract); D_ve_grid = 10**log_D_ve_grid.
+_d_lo, _d_hi, _n_dve = D_VE_RANGE
+log_D_ve_grid = np.linspace(np.log10(_d_lo), np.log10(_d_hi), _n_dve)  # shape (N_Dve,), equidistant
+D_ve_grid     = 10.0 ** log_D_ve_grid                        # shape (N_Dve,) [um]
 RI_real_grid  = np.linspace(*RI_REAL_RANGE)                   # shape (N_RI,)
 log_AR_grid   = np.linspace(*LOG10_AR_RANGE)                  # shape (N_AR,)
 AR_grid       = 10.0 ** log_AR_grid                           # bc_ratio values
@@ -235,6 +241,7 @@ def _provenance_attrs():
         "medium_conditions": MEDIUM_CONDITIONS,
         "m_imag": M_IMAG,
         "d_ve_range": D_VE_RANGE,
+        "d_ve_spacing": D_VE_SPACING,
         "ri_real_range": RI_REAL_RANGE,
         "log10_ar_range": LOG10_AR_RANGE,
         "n_cos_theta_o_half": N_COS_THETA_O_HALF,
@@ -276,7 +283,7 @@ def _create_h5(filepath):
             prov.attrs[k] = v
 
         # Shared grid axis arrays (at root)
-        f.create_dataset("D_ve_grid",              data=D_ve_grid,              dtype=np.float64)
+        f.create_dataset("log_D_ve_grid",          data=log_D_ve_grid,          dtype=np.float64)
         f.create_dataset("RI_real_grid",            data=RI_real_grid,           dtype=np.float64)
         f.create_dataset("log_AR_grid",             data=log_AR_grid,            dtype=np.float64)
         f.create_dataset("cos_theta_o_half_grid",   data=cos_theta_o_half_grid,  dtype=np.float64)

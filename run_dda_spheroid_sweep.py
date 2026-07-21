@@ -71,7 +71,7 @@ M_IMAG = 0.0     # imaginary part of particle refractive index (fixed)
 D_VE_RANGE     = (0.20, 1.20, 50)      # volume-equivalent diameter [um] endpoints; log10-spaced
 D_VE_SPACING   = "log10"               # grid spacing for D_ve: "log10" -> log_D_ve_grid axis
 RI_REAL_RANGE  = (1.35, 1.70, 15)    # Re(m_p), 0.025 step
-LOG10_AR_RANGE = (0.0, 1.35, 14)     # log10(AR), AR = b/c = 1/beta; oblate-only (beta 1.0 -> 0.045)
+LOG10_AR_RANGE = (0.0, 1.55, 16)     # log10(AR), AR = b/c = 1/beta; oblate-only (beta 1.0 -> 0.028; extended for strongly-oblate Kaolinite)
 
 # Orientation grid on reduced domain
 N_COS_THETA_O_HALF = 13   # cos(theta_o) in [0, 1], equidistant

@@ -37,4 +37,18 @@ This is ~20× kaolinite's textbook bulk birefringence — treated as an empirica
 *effective* optical property (an open paradox). It is generated into an anisotropic LUT via
 `run_dda_spheroid_sweep.py --delta-n-eff -0.28`.
 
+## Calibrating delta_n_eff (two stages)
+
+1. **`calib_dn_eff_stage1_dda.py`** (this repo, venv) — sweep delta_n on the uniaxial oblate
+   spheroid (optic axis = c) at the species' beta and D_ve; save A(theta), B(theta) per
+   delta_n to `calib_uniaxial_AB.npz` (uniaxial-along-c is axisymmetric, so the analytic
+   phi-expansion holds).
+2. **`PCAS_Bayes_for_liquid_2wls/scripts/calibrate_dn_eff.py`** (PCAS side) — flow-weight
+   that grid with the species' Phase-1 posterior and DMA-APM beta prior, and find the
+   delta_n reproducing the observed R_dep (magnitude) + depol-SNR lobe angle.
+
+For Kaolinite the calibrated value depends on the target subset: all-particle median
+R_dep~0.50 -> delta_n_eff ~ -0.26; large-|S| top-20% R_dep~0.66 -> ~ -0.36. The generated
+LUT uses -0.28 (a reasonable first value; flow-weighted R_dep~0.53), refinable to ~-0.32.
+
 See `PCAS_Bayes_for_liquid_2wls/docs/theory_note.tex` §3.5 for the full write-up.

@@ -40,7 +40,13 @@ _parser = argparse.ArgumentParser(
 _parser.add_argument("--preset", choices=["air", "liquid"],
                      default=os.environ.get("DDA_SWEEP_PRESET", "air"))
 _parser.add_argument("--output", default=None, help="override the output HDF5 path")
+_parser.add_argument("--delta-n-eff", type=float, default=0.0,
+                     help="effective UNIAXIAL birefringence n_e - n_o (optic axis = c = spheroid "
+                          "symmetry axis). 0 = isotropic (default). Nonzero builds an anisotropic "
+                          "m_p_xyz=(n_o,n_o,n_e), mean-preserving about the RI axis (n_o=RI-dn/3). "
+                          "Uniaxial-along-c stays axisymmetric so the analytic phi-expansion holds.")
 _cli, _ = _parser.parse_known_args()
+DELTA_N_EFF = float(_cli.delta_n_eff)
 
 _PRESET = _cli.preset.lower()
 if _PRESET == "air":
@@ -248,6 +254,10 @@ def _provenance_attrs():
         "n_phi_o": N_PHI_O,
         "rng_seed": RNG_SEED,
     }
+    # Only record the uniaxial effective birefringence when nonzero, so an isotropic
+    # (dn=0) run keeps the SAME config_hash as the existing isotropic LUTs.
+    if DELTA_N_EFF != 0.0:
+        config["delta_n_eff"] = DELTA_N_EFF
     config_hash = hashlib.sha256(_canonical_encode(config)).hexdigest()
 
     return {
@@ -273,6 +283,7 @@ def _create_h5(filepath):
         # Root-level provenance attributes
         f.attrs['m_m']               = MEDIUM_CONDITIONS[0][1]
         f.attrs['m_imag']            = M_IMAG
+        f.attrs['delta_n_eff']       = DELTA_N_EFF
         f.attrs['rng_seed']          = RNG_SEED
         f.attrs['solver_tol']        = 1e-2
         f.attrs['block_dda_version'] = '0.7.2'
@@ -353,8 +364,13 @@ with h5py.File(OUTPUT_FILE, "r+") as h5:
                 continue
 
             r_v_base = D_ve / 2.0
-            m_p = RI_real + 1j * M_IMAG
-            m_p_xyz = np.array([m_p, m_p, m_p])  # isotropic
+            # Uniaxial effective birefringence: optic axis = z = c (spheroid symmetry axis),
+            # mean-preserving about the RI axis so (2 n_o + n_e)/3 = RI_real. dn=0 -> isotropic.
+            n_o = RI_real - DELTA_N_EFF / 3.0
+            n_e = RI_real + 2.0 * DELTA_N_EFF / 3.0
+            m_p_o = n_o + 1j * M_IMAG
+            m_p_e = n_e + 1j * M_IMAG
+            m_p_xyz = np.array([m_p_o, m_p_o, m_p_e])  # (x,y in-plane = n_o ; z = c = n_e)
 
             # Build geometry
             print("=" * 64)

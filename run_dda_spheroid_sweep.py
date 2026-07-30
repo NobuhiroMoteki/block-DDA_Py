@@ -31,13 +31,15 @@ from bl_dda.scatterer import Target, IncidentField, DiscreteDipoles
 RNG_SEED    = 12345
 MAX_TRY     = 1
 
-# Host-medium preset. Thin CLI (for the pcas_lut_schema adapter): --preset and
-# --output; falls back to the DDA_SWEEP_PRESET env var, then "air". No args (or
+# Host-medium + grid preset. Thin CLI (for the pcas_lut_schema adapter): --preset
+# and --output; falls back to the DDA_SWEEP_PRESET env var, then "air". No args (or
 # preset=air) reproduces the original run byte-for-byte; "liquid" targets the
-# liquid CAS-v2 setup (water host at the two operating wavelengths).
+# liquid CAS-v2 setup (water host at the two operating wavelengths);
+# "liquid_prolate" is the same host but sweeps PROLATE spheroids over a narrow
+# low-contrast RI band, for bacteria-like aquatic particles (see below).
 _parser = argparse.ArgumentParser(
     description="block-DDA_Py spheroid parameter sweep (pcas_lut_schema producer)")
-_parser.add_argument("--preset", choices=["air", "liquid", "liquid512"],
+_parser.add_argument("--preset", choices=["air", "liquid", "liquid512", "liquid_prolate"],
                      default=os.environ.get("DDA_SWEEP_PRESET", "air"))
 _parser.add_argument("--output", default=None, help="override the output HDF5 path")
 _parser.add_argument("--delta-n-eff", type=float, default=0.0,
@@ -72,8 +74,17 @@ elif _PRESET == "liquid512":
     MEDIUM_CONDITIONS = [
         (0.512, 1.3345),
     ]
+elif _PRESET == "liquid_prolate":
+    OUTPUT_FILE = "dda_results/dda_results_spheroid_sweep_liquid_prolate.h5"
+    # Same water host as "liquid"; the grid overrides below make it PROLATE.
+    MEDIUM_CONDITIONS = [
+        (0.637, 1.3315),
+        (0.773, 1.3300),
+    ]
 else:
-    raise SystemExit(f"unknown preset {_PRESET!r} (use 'air', 'liquid' or 'liquid512')")
+    raise SystemExit(
+        f"unknown preset {_PRESET!r} "
+        "(use 'air', 'liquid', 'liquid512' or 'liquid_prolate')")
 
 if _cli.output is not None:
     OUTPUT_FILE = _cli.output
@@ -86,6 +97,35 @@ D_VE_RANGE     = (0.20, 1.20, 50)      # volume-equivalent diameter [um] endpoin
 D_VE_SPACING   = "log10"               # grid spacing for D_ve: "log10" -> log_D_ve_grid axis
 RI_REAL_RANGE  = (1.35, 1.70, 15)    # Re(m_p), 0.025 step
 LOG10_AR_RANGE = (0.0, 1.55, 16)     # log10(AR), AR = b/c = 1/beta; oblate-only (beta 1.0 -> 0.028; extended for strongly-oblate Kaolinite)
+
+# The "liquid_prolate" preset re-points the shape axis to PROLATE (AR = b/c < 1, so the
+# symmetry axis c is the LONG one) and narrows RI to the low-contrast band of aquatic
+# bacteria. Target: marine bacterioplankton, whose relative refractive index is ~1.055
+# (Stramski, Bricaud & Morel 2001, Appl. Opt. 40, 2929, Table 1 "HBAC") and whose natural
+# cell volumes are 0.042-0.074 um^3, i.e. D_ve ~ 0.43-0.52 um, in small rod-shaped cells
+# (Schut et al. 1993, Appl. Environ. Microbiol. 59, 2150).
+#   - RI 1.34-1.47 covers relative 1.055 +- 3 sigma (sigma = 0.015, so relative 1.010-1.100)
+#     at BOTH host indices: 1.010 x 1.3300 = 1.3433 and 1.100 x 1.3315 = 1.4646. The mean maps
+#     to 1.4047 at 637 nm and 1.4032 at 773 nm. 8 nodes (step 0.019, finer than the oblate
+#     LUT's 0.025) leaves the consumer's cubic B-spline margin over its 4-knot minimum.
+#     CAUTION: sigma = 0.015 is an ESTIMATE of cell-to-cell spread, not a value from the two
+#     cited papers -- Stramski et al. tabulate only the mean. Widen the axis if it is revised.
+#   - log10(AR) -log10(3)..0 is elongation (length/width = 1/AR) from 1 to 3, the range reported
+#     for natural marine cocci and short rods. Filamentous freshwater morphotypes reach
+#     elongation >10 and are NOT covered -- they need a wider axis and a regenerated LUT.
+#   - D_ve and the orientation grid are left identical to the oblate LUT so both can be used
+#     in one mixture with matching node clamping. At the median D_ve of 0.48 um, elongation
+#     3 gives 0.33 x 1.00 um -- the real dimensions of a marine rod.
+# NOTE the geometry builder's documented bc_ratio range is [1.0, 7.0] (oblate). Prolate is
+# mathematically sound there (volume is preserved, b = c*bc < c), and the realized lattice
+# was checked at elongation 1-3: volume within 4% and aspect ratio within 9% of intent,
+# the latter dominated by +-1 lattice cell at dpl=17. Its surface_interpolation_factor
+# = int(4*cbrt(bc*ab)) does drop from 4 to 2 as the particle elongates, which is the wrong
+# direction, but with gre_beta=0 the surface is an exact analytic ellipsoid so the coarser
+# sampling did not degrade the realized shape. Re-check before extending to filaments.
+if _PRESET == "liquid_prolate":
+    RI_REAL_RANGE  = (1.34, 1.47, 8)     # Re(m_p), 0.0186 step; low-contrast bacteria band
+    LOG10_AR_RANGE = (-0.4771, 0.0, 9)   # log10(AR = b/c); PROLATE, -log10(3): elongation 1 -> 3
 
 # Orientation grid on reduced domain
 N_COS_THETA_O_HALF = 13   # cos(theta_o) in [0, 1], equidistant

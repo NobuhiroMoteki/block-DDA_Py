@@ -72,7 +72,7 @@ uv --version              # should print >= 0.5
 Place the repository under your **Linux** home directory (not under `/mnt/c/...`, which is much slower):
 
 ```sh
-mkdir -p ~/Python_in_WSL && cd ~/Python_in_WSL
+mkdir -p ~/Python && cd ~/Python
 git clone https://github.com/NobuhiroMoteki/block-DDA_Py.git
 cd block-DDA_Py
 uv venv --python 3.13
@@ -88,12 +88,12 @@ The first `uv venv` invocation will download Python 3.13 automatically.
 3. From the Ubuntu shell:
 
    ```sh
-   cd ~/Python_in_WSL/block-DDA_Py
+   cd ~/Python/block-DDA_Py
    code .
    ```
 
 4. In VS Code, select the interpreter
-   `~/Python_in_WSL/block-DDA_Py/.venv/bin/python` (Cmd/Ctrl-Shift-P → *Python: Select Interpreter*).
+   `~/Python/block-DDA_Py/.venv/bin/python` (Cmd/Ctrl-Shift-P → *Python: Select Interpreter*).
 
 ### A.7 Smoke test
 

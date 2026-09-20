@@ -53,7 +53,7 @@ sibling whenever the output path ends in `.pdf`):
 
 ```bash
 julia --project=viz viz/visualize_paper_targets.jl \
-    /home/moteki/Python_in_WSL/block-DDA_Py/dda_results/paper/figures/fig1_target_geometries.pdf
+    /home/moteki/Python/block-DDA_Py/dda_results/paper/figures/fig1_target_geometries.pdf
 # → fig1_target_geometries.pdf  (vector)
 # → fig1_target_geometries.png  (raster, px_per_unit = 2)
 ```

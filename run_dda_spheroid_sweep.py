@@ -37,7 +37,7 @@ MAX_TRY     = 1
 # liquid CAS-v2 setup (water host at the two operating wavelengths).
 _parser = argparse.ArgumentParser(
     description="block-DDA_Py spheroid parameter sweep (pcas_lut_schema producer)")
-_parser.add_argument("--preset", choices=["air", "liquid"],
+_parser.add_argument("--preset", choices=["air", "liquid", "liquid512"],
                      default=os.environ.get("DDA_SWEEP_PRESET", "air"))
 _parser.add_argument("--output", default=None, help="override the output HDF5 path")
 _parser.add_argument("--delta-n-eff", type=float, default=0.0,
@@ -64,8 +64,16 @@ elif _PRESET == "liquid":
         (0.637, 1.3315),
         (0.773, 1.3300),
     ]
+elif _PRESET == "liquid512":
+    # Third CAS-v2 wavelength (PCAS_Bayes_for_liquid_2wls, 2026-10-13): a SEPARATE table at 512 nm
+    # with the same grid as "liquid". Water m_m from Hale & Querry (1973), linearly interpolated
+    # (the same source gives 1.3315 / 1.3300 at 637 / 773 nm).
+    OUTPUT_FILE = "dda_results/dda_results_spheroid_sweep_liquid512.h5"
+    MEDIUM_CONDITIONS = [
+        (0.512, 1.3345),
+    ]
 else:
-    raise SystemExit(f"unknown preset {_PRESET!r} (use 'air' or 'liquid')")
+    raise SystemExit(f"unknown preset {_PRESET!r} (use 'air', 'liquid' or 'liquid512')")
 
 if _cli.output is not None:
     OUTPUT_FILE = _cli.output

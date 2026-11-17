@@ -133,6 +133,7 @@ For dedicated spheroid sweeps over a regular grid of physical parameters, use `r
    - Use the flag for new output files only. A file keeps the mode it was created with, and resuming it in the other mode is refused.
    - The flag cannot be combined with a nonzero `--delta-n-eff`.
    - The HDF5 layout is unchanged. The root attributes `shifted_ri` and `lattice_policy` and the provenance `config_hash` mark a file made in this mode.
+   - Measured gain over the default mode for an oblate spheroid (`b/c = 2`, `D_ve` = 0.6 and 1.0 µm, 13 orientations, `RI_real` from 1.35 to 1.70): the total time drops by a factor of 7.7 to 9.0 with 15 `RI_real` values and by a factor of 15.1 to 17.8 with 30 values. The time of a slot hardly depends on the number of `RI_real` values. The benchmark is `scripts/run_shift_scaling.py`, and the details are in Sec. 5.8 of `docs/theory_note.pdf`.
 
 3. See `read_spheroid_sweep.ipynb` for how to browse the file overview and retrieve results interactively.
 

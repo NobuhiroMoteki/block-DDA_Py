@@ -939,6 +939,111 @@ On the reduced sweep grid the shifted mode and the default mode differ
 by up to \SI{0.5}{\percent} below the largest $n_{\mathrm{real}}$.
 This difference is caused by the change of lattice, not by the solver.
 
+%----------------------------------------------------------------------
+\subsection{Measured speed-up}
+\label{sec:shift-benchmark}
+%----------------------------------------------------------------------
+
+The script \texttt{scripts/run\_shift\_scaling.py} times three ways of
+solving a refractive-index sweep.
+Method~A is the default mode of the sweep.
+It builds one lattice per refractive index and calls the existing block
+GMRES once per index.
+Method~B calls the existing block GMRES once per index on the common
+lattice.
+Method~C is the shifted block GMRES on the common lattice.
+The ratio of the solver times of B and C isolates the effect of the
+solver.
+It is the quantity estimated by \eqref{eq:shift-speedup}.
+The ratio of the total times of A and C is the gain of
+\texttt{--shifted-ri} over the default mode.
+The total times include the lattice generation, the FFT of the
+interaction tensor and the evaluation of the observables.
+
+The test particle is an oblate spheroid with $b/c = 2$ at
+$\lambda_0 = \SI{0.638}{\micro\meter}$ in air, with $L = 13$
+orientations.
+The refractive indices are $N_m$ equispaced real values from $1.35$ to
+$1.70$.
+The common lattice has $N = \num{11018}$ dipoles for
+$D_{ve} = \SI{0.6}{\micro\meter}$ and $N = \num{50770}$ dipoles for
+$D_{ve} = \SI{1.0}{\micro\meter}$.
+The runs used 16 threads on a machine with two Intel Xeon E5-2620~v4
+processors (16 cores in total).
+Table~\ref{tab:shift-benchmark} lists the results.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Measured speed-up of the shifted block GMRES for an oblate
+           spheroid ($b/c = 2$, $L = 13$).
+           $S_{\text{solve}}$ is the ratio of the solver times of
+           methods B and C.
+           $T_{\text{A}}$ and $T_{\text{C}}$ are the total times of
+           methods A and C.}
+  \label{tab:shift-benchmark}
+  \begin{tabular}{llrcrrrrr}
+    \toprule
+    $D_{ve}$ (\si{\micro\meter}) & tol & $N_m$ & $n_s$
+      & $\sum_s n_s / \max_s n_s$ & $S_{\text{solve}}$
+      & $T_{\text{A}}$ (\si{\second}) & $T_{\text{C}}$ (\si{\second})
+      & $T_{\text{A}} / T_{\text{C}}$ \\
+    \midrule
+    0.6 & $10^{-2}$ & 15 & 5--10  & 10.9 & 10.3 &  49.7 &  5.5 &  9.0 \\
+    0.6 & $10^{-2}$ & 30 & 5--10  & 21.7 & 20.5 &  98.6 &  5.5 & 17.8 \\
+    0.6 & $10^{-5}$ & 15 & 10--18 & 11.5 & 10.1 &  76.0 &  9.0 &  8.5 \\
+    0.6 & $10^{-5}$ & 30 & 10--18 & 23.1 & 19.0 & 150.1 &  9.4 & 15.9 \\
+    1.0 & $10^{-2}$ & 15 & 8--20  & 10.2 &  9.5 & 256.9 & 32.2 &  8.0 \\
+    1.0 & $10^{-2}$ & 30 & 8--20  & 20.6 & 18.9 & 516.6 & 32.7 & 15.8 \\
+    1.0 & $10^{-5}$ & 15 & 16--34 & 10.8 &  9.1 & 497.4 & 65.0 &  7.7 \\
+    1.0 & $10^{-5}$ & 30 & 16--34 & 21.6 & 18.0 & 987.0 & 65.3 & 15.1 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The number of steps of every refractive index equals that of method~B
+in all runs.
+The forward scattering amplitudes of methods B and C differ by at most
+\num{1.5e-14} in relative terms.
+
+The time of the shifted solve hardly depends on $N_m$.
+Between $N_m = 1$ and $N_m = 30$ it grows by \SI{16}{\percent} for
+$D_{ve} = \SI{0.6}{\micro\meter}$ at $\text{tol} = 10^{-5}$ and by less
+than \SI{5}{\percent} in the other three cases.
+The only work that grows with $N_m$ is the solution of the small
+least-squares problems.
+Their share of the solver time is at most \SI{3.0}{\percent} for
+$N_m = 15$ and at most \SI{5.3}{\percent} for $N_m = 30$.
+
+The solver speed-up $S_{\text{solve}}$ reaches \SIrange{82}{95}{\percent}
+of the ratio $\sum_s n_s / \max_s n_s$ of the step counts.
+One reason for the gap is the Gram--Schmidt term of
+\eqref{eq:gmres-cost}.
+It grows quadratically with the number of steps, so a run with few
+steps costs less than its share of the steps.
+The Gram--Schmidt process takes about \SI{14}{\percent} of the shifted
+solve time for $D_{ve} = \SI{0.6}{\micro\meter}$ at
+$\text{tol} = 10^{-2}$ and about \SI{46}{\percent} for
+$D_{ve} = \SI{1.0}{\micro\meter}$ at $\text{tol} = 10^{-5}$.
+The other reasons are the least-squares problems and the projections
+\eqref{eq:projection-G}, which only method~C computes inside the solver.
+Equation~\eqref{eq:shift-speedup} with the measured $t_{\text{mvp}}$ and
+$t_{\text{gs}}$ predicts $S_{\text{solve}}$ to within \SI{14}{\percent}.
+The largest deviation occurs for $D_{ve} = \SI{0.6}{\micro\meter}$ at
+$\text{tol} = 10^{-5}$ and $N_m = 30$, where the share of the
+least-squares problems is largest.
+
+The gain over the default mode is smaller than $S_{\text{solve}}$.
+The lattices of method~A are coarser at the lower refractive indices.
+Their mean number of dipoles is \SI{74}{\percent} of that of the common
+lattice.
+The total speed-up is still \numrange{7.7}{9.0} for $N_m = 15$ and
+\numrange{15.1}{17.8} for $N_m = 30$.
+
+The peak resident memory of method~C is up to \SI{0.9}{\gibi\byte} for
+$D_{ve} = \SI{0.6}{\micro\meter}$ and up to \SI{3.8}{\gibi\byte} for
+$D_{ve} = \SI{1.0}{\micro\meter}$.
+It exceeds that of methods A and B by less than \SI{5}{\percent}.
+
 %======================================================================
 \section{Computational Performance: Old vs.\ New Implementation}
 \label{sec:performance}

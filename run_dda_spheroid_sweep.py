@@ -9,6 +9,12 @@ with the downstream consumer (build_spheroid_lut.py).  Each wavelength gets its
 own HDF5 group (e.g. wl_0p453/); shared grid axes live at the root level.
 
 Output: dda_results/dda_results_spheroid_sweep.h5
+
+With --shifted-ri the RI_real axis is solved in ONE shifted block-GMRES process per
+(wl, D_ve, AR) slot instead of one solve per RI. All RI of a slot then share the
+lattice built for the largest |m| of the RI axis, so the values differ from the
+default mode at the level of the discretisation error. The HDF5 schema is the same.
+The two modes cannot be mixed in one output file.
 """
 
 import argparse
@@ -47,8 +53,18 @@ _parser.add_argument("--delta-n-eff", type=float, default=0.0,
                           "symmetry axis). 0 = isotropic (default). Nonzero builds an anisotropic "
                           "m_p_xyz=(n_o,n_o,n_e), mean-preserving about the RI axis (n_o=RI-dn/3). "
                           "Uniaxial-along-c stays axisymmetric so the analytic phi-expansion holds.")
+_parser.add_argument("--shifted-ri", action="store_true",
+                     help="solve all RI_real of a (wl, D_ve, AR) slot with one shifted "
+                          "block-GMRES process on a lattice common to the RI axis (built for "
+                          "the largest |m|). Isotropic particles only: not allowed with a "
+                          "nonzero --delta-n-eff. Use for NEW output files only.")
 _cli, _ = _parser.parse_known_args()
 DELTA_N_EFF = float(_cli.delta_n_eff)
+SHIFTED_RI  = bool(_cli.shifted_ri)
+if SHIFTED_RI and DELTA_N_EFF != 0.0:
+    raise SystemExit("--shifted-ri requires an isotropic particle: with a nonzero "
+                     "--delta-n-eff the diagonal of the interaction matrix is not a scalar "
+                     "shift. Drop --shifted-ri to use the per-RI solver.")
 
 _PRESET = _cli.preset.lower()
 if _PRESET == "air":
@@ -248,6 +264,125 @@ def _run_dda_spheroid(target, wl_0, m_m, cos_theta_o_half, phi_o):
     return S_fw_theta, S_fw_phi, True
 
 
+def _run_dda_spheroid_shifted(target, wl_0, m_m, m_p_list, cos_theta_o_half, phi_o):
+    """Shifted block-GMRES solve of several refractive indices on one lattice.
+
+    Counterpart of `_run_dda_spheroid` for --shifted-ri. The lattice of `target`
+    is shared by all refractive indices in `m_p_list`. The reduced-domain
+    orientation grid and the analytical phi_o expansion are the same.
+
+    Parameters
+    ----------
+    m_p_list : ndarray, shape (N_m,), complex128
+        Isotropic particle refractive indices to solve.
+    cos_theta_o_half : ndarray, shape (N_u_half,)
+    phi_o : ndarray, shape (N_ph,)   [rad]
+
+    Returns
+    -------
+    S_fw_theta : ndarray, shape (N_m, N_u_half, N_ph), complex128
+    S_fw_phi   : ndarray, shape (N_m, N_u_half, N_ph), complex128
+        NaN for refractive indices that did not converge.
+    converged  : ndarray, shape (N_m,), bool
+    """
+    N_u = len(cos_theta_o_half)
+
+    beta = np.arccos(cos_theta_o_half)  # shape (N_u,)
+    euler_beta_only = np.column_stack([
+        np.zeros(N_u), beta, np.zeros(N_u),
+    ])  # shape (N_u, 3): alpha=0, gamma=0
+
+    inc = IncidentField(wl_0, m_m, euler_beta_only)
+    dd  = DiscreteDipoles(target, inc)
+    dd.set_interaction_matrix_shifted(m_p_list)
+    dd.solve_matrix_equation_shifted()
+    obs = dd.compute_observables_shifted()
+
+    # Observables at phi_o=0 (alpha=0), shape (N_m, N_u)
+    S_s_0 = obs["S_fw_PCAS_theta"]
+    S_p_0 = obs["S_fw_PCAS_phi"]
+
+    # Analytical expansion to (N_m, N_u_half, N_ph)
+    exp_2p = np.exp(2j * phi_o)  # shape (N_ph,)
+    A_fw = (S_s_0 + S_p_0) / 2   # shape (N_m, N_u)
+    B_fw = (S_s_0 - S_p_0) / 2   # shape (N_m, N_u)
+    S_fw_theta = A_fw[:, :, np.newaxis] + B_fw[:, :, np.newaxis] * exp_2p[np.newaxis, np.newaxis, :]
+    S_fw_phi   = A_fw[:, :, np.newaxis] - B_fw[:, :, np.newaxis] * exp_2p[np.newaxis, np.newaxis, :]
+
+    return S_fw_theta, S_fw_phi, dd.converge_shifted
+
+
+def _sweep_wavelength_shifted(grp, grp_name, wl_0, m_m):
+    """--shifted-ri sweep of one wavelength group: one solve per (D_ve, AR) slot.
+
+    The lattice of a slot is always built for the largest |m| of the WHOLE RI axis,
+    also when only part of the axis is left to solve after a resume. The stored
+    values therefore do not depend on how a run was interrupted.
+    """
+    m_p_grid  = RI_real_grid + 1j * M_IMAG                    # shape (N_RI,), complex128
+    m_lattice = m_p_grid[np.argmax(np.abs(m_p_grid))]
+    m_p_xyz   = np.array([m_lattice, m_lattice, m_lattice])   # lattice-defining index
+
+    for (i_dve, D_ve), (i_ar, bc_ratio) in \
+            itertools.product(enumerate(D_ve_grid), enumerate(AR_grid)):
+
+        # Skip the slot only if every RI is already converged
+        done = grp['converged'][i_dve, :, i_ar]               # shape (N_RI,)
+        if np.all(done):
+            continue
+        todo = np.flatnonzero(~done)                          # RI indices left to solve
+
+        r_v_base = D_ve / 2.0
+
+        print("=" * 64)
+        try:
+            gre_name, lattice_n, lattice_lf, grid, is_in = \
+                _build_spheroid_geometry(r_v_base, bc_ratio, wl_0, m_p_xyz)
+        except (ValueError, IndexError):
+            _log(f"[{grp_name}] D_ve={D_ve:.4f} um  "
+                 f"AR={bc_ratio:.4f} (log={log_AR_grid[i_ar]:.3f})  "
+                 f"-- geometry failed, skipping")
+            continue
+
+        n_occ = int(np.sum(is_in))
+        if n_occ == 0:
+            _log(f"[{grp_name}] D_ve={D_ve:.4f} um  "
+                 f"AR={bc_ratio:.4f} (log={log_AR_grid[i_ar]:.3f})  "
+                 f"-- no dipoles, skipping")
+            continue
+
+        _log(f"[{grp_name}] D_ve={D_ve:.4f} um  "
+             f"RI={RI_real_grid[todo[0]]:.3f}..{RI_real_grid[todo[-1]]:.3f}+{M_IMAG:.4f}j "
+             f"({len(todo)}/{N_RI} shifts, lattice for |m|={abs(m_lattice):.3f})  "
+             f"AR={bc_ratio:.4f} (log={log_AR_grid[i_ar]:.3f})  "
+             f"d={lattice_lf:.5f} um  N_dip={n_occ}  L_solve={N_u_half}")
+
+        target = Target(gre_name, lattice_n, lattice_lf,
+                        grid, is_in, m_p_xyz, r_v_base)
+
+        try:
+            S_fw_theta, S_fw_phi, converged = \
+                _run_dda_spheroid_shifted(target, wl_0, m_m, m_p_grid[todo],
+                                          cos_theta_o_half_grid, phi_o_grid)
+        except KeyboardInterrupt:
+            _log("Interrupted -- file closed cleanly.")
+            raise SystemExit(0)
+
+        # Write results (NaN and converged=False for RI that did not converge)
+        N = slice(None)
+        for j, i_ri in enumerate(todo):
+            idx3 = (i_dve, int(i_ri), i_ar)
+            grp['S_fw_theta_re'][idx3 + (N, N)] = S_fw_theta[j].real
+            grp['S_fw_theta_im'][idx3 + (N, N)] = S_fw_theta[j].imag
+            grp['S_fw_phi_re'  ][idx3 + (N, N)] = S_fw_phi[j].real
+            grp['S_fw_phi_im'  ][idx3 + (N, N)] = S_fw_phi[j].imag
+            grp['converged'    ][idx3]           = bool(converged[j])
+
+        _log(f"  converged={int(converged.sum())}/{len(todo)}  "
+             f"S_fw_t(mean)={np.nanmean(S_fw_theta):.4g}  "
+             f"S_fw_p(mean)={np.nanmean(S_fw_phi):.4g}")
+
+
 # ── provenance (pcas_lut_schema contract) ────────────────────────────────────
 
 # vendored from pcas_lut_schema/reference/canonical_hash.py (contract v0.1.0)
@@ -306,11 +441,16 @@ def _provenance_attrs():
     # (dn=0) run keeps the SAME config_hash as the existing isotropic LUTs.
     if DELTA_N_EFF != 0.0:
         config["delta_n_eff"] = DELTA_N_EFF
+    # Same rule for the shifted RI sweep: recorded only when on, so the default
+    # mode keeps its config_hash. The lattice policy changes the stored values.
+    if SHIFTED_RI:
+        config["shifted_ri"] = True
+        config["lattice_policy"] = "max_abs_m"
     config_hash = hashlib.sha256(_canonical_encode(config)).hexdigest()
 
     return {
         "producer_repo":    "block-DDA_Py",
-        "producer_version": "0.7.2",
+        "producer_version": "0.8.0",
         "git_sha":          _git("rev-parse", "HEAD"),
         # tracked-file changes only; untracked artifacts do not count as dirty
         "git_dirty":        bool(_git("status", "--porcelain", "--untracked-files=no")),
@@ -334,7 +474,11 @@ def _create_h5(filepath):
         f.attrs['delta_n_eff']       = DELTA_N_EFF
         f.attrs['rng_seed']          = RNG_SEED
         f.attrs['solver_tol']        = 1e-2
-        f.attrs['block_dda_version'] = '0.7.2'
+        f.attrs['block_dda_version'] = '0.8.0'
+        # Written only in --shifted-ri mode; their absence marks a per-RI-lattice file.
+        if SHIFTED_RI:
+            f.attrs['shifted_ri']     = True
+            f.attrs['lattice_policy'] = 'max_abs_m'
 
         # Provenance block (pcas_lut_schema contract) — additive '/provenance' group
         prov = f.create_group("provenance")
@@ -378,6 +522,14 @@ if not pathlib.Path(OUTPUT_FILE).exists():
     _create_h5(OUTPUT_FILE)
 
 with h5py.File(OUTPUT_FILE, "r+") as h5:
+    # The two lattice policies must not be mixed in one file.
+    _file_shifted = bool(h5.attrs.get('shifted_ri', False))
+    if _file_shifted != SHIFTED_RI:
+        raise SystemExit(
+            f"{OUTPUT_FILE} was created {'with' if _file_shifted else 'without'} "
+            f"--shifted-ri and cannot be resumed {'with' if SHIFTED_RI else 'without'} it "
+            "(the RI lattice policy differs). Use a new --output file.")
+
     for wl_0, m_m in MEDIUM_CONDITIONS:
         grp_name = _wl_group_name(wl_0)
 
@@ -398,6 +550,10 @@ with h5py.File(OUTPUT_FILE, "r+") as h5:
 
         grp = h5[grp_name]
         _log(f"── Wavelength {wl_0} um (group: {grp_name}) ──")
+
+        if SHIFTED_RI:
+            _sweep_wavelength_shifted(grp, grp_name, wl_0, m_m)
+            continue
 
         for (i_dve, D_ve), (i_ri, RI_real), (i_ar, bc_ratio) in \
                 itertools.product(

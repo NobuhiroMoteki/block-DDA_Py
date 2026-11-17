@@ -123,6 +123,17 @@ For dedicated spheroid sweeps over a regular grid of physical parameters, use `r
 
    The script creates the HDF5 file `dda_results/dda_results_spheroid_sweep.h5` (if not existing) and runs the sweep. Intermediate results are written per condition, so the run can be interrupted and resumed.
 
+   **Shifted refractive-index sweep (`--shifted-ri`).** For a homogeneous isotropic particle, changing the refractive index only adds a scalar multiple of the identity to the interaction matrix. With this flag all `RI_real` values of a `(wavelength, D_ve, AR)` slot are solved by one shifted block-GMRES process instead of one solve per value:
+
+   ```sh
+   python run_dda_spheroid_sweep.py --shifted-ri --output dda_results/my_new_lut.h5
+   ```
+
+   - All `RI_real` values of a slot share one lattice, built for the largest `|m|` of the `RI_real` axis. The default mode builds a separate lattice for each value. The results of the two modes therefore differ at the level of the discretization error, except at the largest `RI_real`, where the lattices coincide.
+   - Use the flag for new output files only. A file keeps the mode it was created with, and resuming it in the other mode is refused.
+   - The flag cannot be combined with a nonzero `--delta-n-eff`.
+   - The HDF5 layout is unchanged. The root attributes `shifted_ri` and `lattice_policy` and the provenance `config_hash` mark a file made in this mode.
+
 3. See `read_spheroid_sweep.ipynb` for how to browse the file overview and retrieve results interactively.
 
 **Output HDF5 structure** (`dda_results/dda_results_spheroid_sweep.h5`):
@@ -267,6 +278,12 @@ Spheroid mode reduces both peak memory and computation time by a factor of **1/4
 - v0.7.6: Auto-`dpl` per particle slot; per-iteration residual history stored; incremental-QR block-GMRES; benchmark material `n20` (m_p = 2.0) added
 - v0.7.7: Bundled paper-production sweep results under `dda_results/paper/`
 - v0.7.8: Manuscript-release snapshot for the JQSRT submission
+
+### Shifted block-GMRES refractive-index sweep (v0.8.0)
+- `bl_gmres_shifted_mvp_fft`: one block-Arnoldi process for all refractive indices of a homogeneous isotropic particle on a common lattice
+- `DiscreteDipoles.set_interaction_matrix_shifted`, `solve_matrix_equation_shifted`, `compute_observables_shifted`: sweep API; observables are evaluated without assembling the solutions
+- `run_dda_spheroid_sweep.py --shifted-ri`: the `RI_real` axis is solved in one process per slot; the default mode is unchanged
+- `tests/`: pytest suite comparing the shifted path with the existing solver and with Mie theory
 
 ### Environment
 - **Python**: 3.12 (Windows) → **3.13 (Linux/WSL2)**

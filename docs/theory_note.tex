@@ -13,7 +13,7 @@
 \large Discrete Dipole Approximation with FFT-accelerated\\
 Block-Krylov Solver for Light Scattering by Arbitrary Particles}
 \author{N.\ Moteki}
-\date{Last updated: 2026-04-24 (corresponds to block-DDA\_Py v0.7.6)}
+\date{Last updated: 2026-11-17 (corresponds to block-DDA\_Py v0.8.0)}
 
 \begin{document}
 \maketitle
@@ -537,6 +537,407 @@ To switch the solver, replace the import and function call in
 change \texttt{bl\_bicgstab\_jacobi\_mvp\_fft} to
 \texttt{bl\_cocg\_rq\_jacobi\_mvp\_fft}.
 Both functions share the same interface.
+
+%======================================================================
+\section{Shifted Block GMRES for Refractive-Index Sweeps}
+\label{sec:shifted-gmres}
+%======================================================================
+
+A lookup table of scattering observables requires the solution of
+\eqref{eq:block-system} for many values of the particle refractive
+index~$m_p$ at a fixed shape, size and wavelength.
+For a homogeneous isotropic particle these systems differ only by a
+scalar multiple of the identity matrix~\cite{Argentin2026}.
+This section describes how block-DDA\_Py solves all of them with a
+single block-Krylov process.
+The method combines the shifted-Krylov idea of
+Ref.~\cite{Argentin2026} with the multi-orientation block GMRES of
+Ref.~\cite{Moteki2026}.
+It is implemented in \texttt{bl\_gmres\_shifted\_mvp\_fft}
+(\texttt{bl\_krylov/bl\_krylov.py}) and is available from v0.8.0.
+
+%----------------------------------------------------------------------
+\subsection{Shift structure of the interaction matrix}
+\label{sec:shift-structure}
+%----------------------------------------------------------------------
+
+Split the interaction matrix \eqref{eq:A-matrix} into its diagonal and
+off-diagonal parts:
+\begin{equation}
+  \mathbf{A} = \mathbf{D} + \mathbf{A}_{\text{off}},
+  \qquad
+  \mathbf{D} = \operatorname{diag}\bigl(\boldsymbol{\alpha}_i^{-1}\bigr).
+  \label{eq:A-split}
+\end{equation}
+The off-diagonal part contains only the Green's tensor.
+It depends on the lattice, on $\lambda_0$ and on $m_m$.
+It does not depend on $m_p$.
+The same holds for the right-hand side $\mathbf{B}$, which holds the
+incident field at the lattice points.
+
+For a homogeneous isotropic particle the polarisability
+\eqref{eq:rr-polarisability} is one scalar $\alpha(m_p)$ for all
+dipoles and all Cartesian components.
+Let $m_1, \ldots, m_{N_m}$ be the refractive indices of the sweep.
+The system for $m_s$ is
+\begin{equation}
+  \bigl(\sigma_s\,\mathbf{I} + \mathbf{A}_{\text{off}}\bigr)\,\mathbf{X}_s
+    = \mathbf{B},
+  \qquad
+  \sigma_s = \frac{1}{\alpha(m_s)},
+  \qquad
+  s = 1, \ldots, N_m.
+  \label{eq:shifted-systems}
+\end{equation}
+In this section $\sigma_s$ denotes a shift, not a cross section.
+The formulation \eqref{eq:dda-system} is therefore already in shifted
+form and needs no reformulation.
+
+Three conditions must hold.
+\begin{enumerate}
+  \item The particle is homogeneous and isotropic.
+        For a uniaxial particle $\mathbf{D}$ holds two different values.
+        A change of $m_p$ then changes $\mathbf{D}$ by a matrix that is
+        not a multiple of $\mathbf{I}$.
+  \item All $m_s$ share one lattice.
+        The lattice spacing is normally set from the refractive index as
+        $d = \lambda_0 / (\max_c |m_{p,c}|\, n_{\text{dpl}})$, where
+        $n_{\text{dpl}}$ is the number of dipoles per wavelength inside
+        the particle.
+        In a shifted sweep the lattice is built for $\max_s |m_s|$.
+        The lower refractive indices are then discretised more finely
+        than the rule requires.
+  \item No preconditioner is applied.
+        The solver is the unpreconditioned block GMRES.
+\end{enumerate}
+
+%----------------------------------------------------------------------
+\subsection{Block Arnoldi process and shift invariance}
+\label{sec:shift-arnoldi}
+%----------------------------------------------------------------------
+
+Let $\mathbf{B} = \mathbf{V}_1 \boldsymbol{\Lambda}$ be the thin QR
+factorisation of the right-hand side, with
+$\mathbf{V}_1 \in \mathbb{C}^{3N \times L}$ and
+$\boldsymbol{\Lambda} \in \mathbb{C}^{L \times L}$.
+The block Arnoldi process applied to $\mathbf{A}_{\text{off}}$ generates
+blocks $\mathbf{V}_1, \mathbf{V}_2, \ldots$ with mutually orthonormal
+columns.
+After $n$ steps it satisfies
+\begin{equation}
+  \mathbf{A}_{\text{off}}\,\mathbf{Q}_n
+    = \mathbf{Q}_{n+1}\,\bar{\mathbf{H}}_n,
+  \qquad
+  \mathbf{Q}_n = [\mathbf{V}_1, \ldots, \mathbf{V}_n],
+  \label{eq:block-arnoldi}
+\end{equation}
+where $\bar{\mathbf{H}}_n \in \mathbb{C}^{(n+1)L \times nL}$ is block
+upper Hessenberg.
+Adding $\sigma_s \mathbf{Q}_n$ to both sides gives
+\begin{equation}
+  \bigl(\sigma_s\,\mathbf{I} + \mathbf{A}_{\text{off}}\bigr)\,\mathbf{Q}_n
+    = \mathbf{Q}_{n+1}\,
+      \bigl(\bar{\mathbf{H}}_n + \sigma_s\,\bar{\mathbf{I}}_n\bigr),
+  \qquad
+  \bar{\mathbf{I}}_n =
+  \begin{bmatrix} \mathbf{I}_{nL} \\ \mathbf{0}_{L \times nL} \end{bmatrix}.
+  \label{eq:shifted-arnoldi}
+\end{equation}
+The block Krylov subspace spanned by $\mathbf{Q}_n$ is thus the same for
+every shift~\cite{FrommerGlassner1998}.
+One Arnoldi process serves all $N_m$ systems.
+Each step costs one block matrix--vector product with
+$\mathbf{A}_{\text{off}}$ (Sec.~\ref{sec:goodman-fft}) and one block
+Gram--Schmidt orthogonalisation against the previous blocks.
+
+%----------------------------------------------------------------------
+\subsection{GMRES iterate of each shift}
+\label{sec:shift-iterate}
+%----------------------------------------------------------------------
+
+With the initial guess $\mathbf{X}_s = \mathbf{0}$, the block GMRES
+iterate after $n$ steps is sought in the form
+$\mathbf{X}_s^{(n)} = \mathbf{Q}_n \mathbf{Y}$ with
+$\mathbf{Y} \in \mathbb{C}^{nL \times L}$.
+Because $\mathbf{Q}_{n+1}$ has orthonormal columns and
+$\mathbf{B} = \mathbf{Q}_{n+1} \mathbf{E}_1 \boldsymbol{\Lambda}$ with
+$\mathbf{E}_1 = [\mathbf{I}_L, \mathbf{0}, \ldots, \mathbf{0}]^\top$,
+\eqref{eq:shifted-arnoldi} gives
+\begin{equation}
+  \bigl\| \mathbf{B}
+      - (\sigma_s\,\mathbf{I} + \mathbf{A}_{\text{off}})\,
+        \mathbf{Q}_n \mathbf{Y} \bigr\|_F
+  = \bigl\| \mathbf{E}_1 \boldsymbol{\Lambda}
+      - (\bar{\mathbf{H}}_n + \sigma_s\,\bar{\mathbf{I}}_n)\,
+        \mathbf{Y} \bigr\|_F .
+  \label{eq:shifted-residual}
+\end{equation}
+The iterate of shift $s$ is the minimiser
+\begin{equation}
+  \mathbf{Y}_s^{(n)}
+    = \arg\min_{\mathbf{Y}}
+      \bigl\| \mathbf{E}_1 \boldsymbol{\Lambda}
+        - (\bar{\mathbf{H}}_n + \sigma_s\,\bar{\mathbf{I}}_n)\,
+          \mathbf{Y} \bigr\|_F ,
+  \qquad
+  \mathbf{X}_s^{(n)} = \mathbf{Q}_n \mathbf{Y}_s^{(n)} .
+  \label{eq:shifted-lsq}
+\end{equation}
+Unrestarted block GMRES~\cite{SaadSchultz1986,SimonciniGallopoulos1996}
+applied to system $s$ alone minimises the same residual over the same
+subspace.
+The iterate \eqref{eq:shifted-lsq} is therefore identical to the one of
+an independent solve.
+The stopping test is applied to each shift separately:
+\begin{equation}
+  \frac{\bigl\| \mathbf{B}
+      - (\sigma_s\,\mathbf{I} + \mathbf{A}_{\text{off}})\,
+        \mathbf{X}_s^{(n)} \bigr\|_F}{\| \mathbf{B} \|_F}
+  < \text{tol}.
+  \label{eq:shifted-stop}
+\end{equation}
+A shift that passes the test at step $n_s$ keeps its
+$\mathbf{Y}_s^{(n_s)}$ and is dropped from the later steps.
+The process ends when every shift has stopped or when the maximum
+number of steps is reached.
+The number of steps $n_s$ equals that of an independent solve of
+system~$s$.
+The Arnoldi process runs for $\max_s n_s$ steps.
+
+The least-squares problem \eqref{eq:shifted-lsq} is solved by a QR
+factorisation of the augmented matrix:
+\begin{equation}
+  \bigl[\, \bar{\mathbf{H}}_n + \sigma_s\,\bar{\mathbf{I}}_n \;\big|\;
+         \mathbf{E}_1 \boldsymbol{\Lambda} \,\bigr]
+  = \tilde{\mathbf{Q}}
+    \begin{bmatrix}
+      \mathbf{R} & \mathbf{C} \\
+      \mathbf{0} & \mathbf{R}_{\text{res}}
+    \end{bmatrix},
+  \qquad
+  \mathbf{Y}_s^{(n)} = \mathbf{R}^{-1} \mathbf{C},
+  \qquad
+  \text{residual norm} = \| \mathbf{R}_{\text{res}} \|_F .
+  \label{eq:augmented-qr}
+\end{equation}
+Only the triangular factor is computed.
+The cost is $O\bigl((nL)^3\bigr)$ per shift and step.
+It does not depend on $N$.
+
+The shift invariance holds for the unrestarted method only.
+After a restart the residuals of different shifts span different
+spaces, and a common basis no longer serves all
+shifts~\cite{FrommerGlassner1998}.
+block-DDA\_Py keeps the full Krylov basis, so this limitation applies
+only when the basis no longer fits in memory.
+
+%----------------------------------------------------------------------
+\subsection{Observables without assembling the solutions}
+\label{sec:shift-observables}
+%----------------------------------------------------------------------
+
+Assembling $\mathbf{X}_s = \mathbf{Q}_n \mathbf{Y}_s$ costs
+$O(3N \cdot nL \cdot L)$ operations per shift.
+For $N_m$ shifts this is comparable to the Gram--Schmidt cost of the
+whole Arnoldi process.
+The observables of Sec.~\ref{sec:observables} are linear or quadratic
+functionals of the solution and can be evaluated from
+$\mathbf{Y}_s$ directly.
+Let $\bm{x}_{s,\ell}$ and $\bm{y}_{s,\ell}$ denote column $\ell$ of
+$\mathbf{X}_s$ and $\mathbf{Y}_s$, and $\bm{b}_\ell$ column $\ell$ of
+$\mathbf{B}$.
+
+\paragraph{Extinction.}
+Equation \eqref{eq:C-ext} reads
+$C_{\text{ext},\ell} = 4\pi k \operatorname{Im}(\bm{b}_\ell^\dagger \bm{x}_{s,\ell})$.
+Since
+$\mathbf{B}^\dagger \mathbf{Q}_n
+  = [\boldsymbol{\Lambda}^\dagger, \mathbf{0}, \ldots, \mathbf{0}]$,
+\begin{equation}
+  C_{\text{ext},\ell}(m_s)
+    = 4\pi k \operatorname{Im}
+      \bigl[ \bigl( \boldsymbol{\Lambda}^\dagger\,
+             \mathbf{Y}_{s,1} \bigr)_{\ell\ell} \bigr],
+  \label{eq:C-ext-shifted}
+\end{equation}
+where $\mathbf{Y}_{s,1}$ is the first $L$ rows of $\mathbf{Y}_s$.
+
+\paragraph{Scattering amplitudes.}
+Each amplitude in \eqref{eq:S-fw-theta}, \eqref{eq:S-fw-phi} and their
+backward counterparts has the form
+$S_\ell = \bm{f}_\ell^\dagger \bm{x}_{s,\ell}$.
+The vector $\bm{f}_\ell \in \mathbb{C}^{3N}$ has the entries
+\begin{equation}
+  (\bm{f}_\ell)_{i,c} = k^2\, \kappa\, e_i\, (\hat{\bm{e}})_c ,
+  \label{eq:functional-f}
+\end{equation}
+where $e_i$ is the phase factor of dipole $i$ for the scattering
+direction, $\hat{\bm{e}}$ is the real polarisation unit vector, and
+$\kappa = \sqrt{2}$ for the $\theta$-component and
+$\kappa = \sqrt{2}\,i$ for the $\phi$-component.
+Collect the vectors as
+$\mathbf{F} = [\bm{f}_1, \ldots, \bm{f}_L]$ and accumulate
+\begin{equation}
+  \mathbf{G}_n = \mathbf{F}^\dagger \mathbf{Q}_n
+  \label{eq:projection-G}
+\end{equation}
+during the Arnoldi process, one $L \times L$ block per step.
+Then
+\begin{equation}
+  S_\ell(m_s) = \bigl( \mathbf{G}_{n_s} \mathbf{Y}_s \bigr)_{\ell\ell} .
+  \label{eq:S-shifted}
+\end{equation}
+
+\paragraph{Absorption.}
+By \eqref{eq:E-from-P} the internal field is
+$\bm{E}_i = c_E\, \bm{P}_i$ with
+$c_E(m) = 4\pi / [(\epsilon_r - 1)\, v]$.
+Equation \eqref{eq:C-abs} then becomes
+$C_{\text{abs},\ell} = 4\pi k \operatorname{Im}(c_E^*)\, \| \bm{x}_{s,\ell} \|^2$.
+Because $\mathbf{Q}_n$ has orthonormal columns,
+$\| \bm{x}_{s,\ell} \| = \| \bm{y}_{s,\ell} \|$ and
+\begin{equation}
+  C_{\text{abs},\ell}(m_s)
+    = 4\pi k \operatorname{Im}\bigl[ c_E(m_s)^* \bigr]\,
+      \| \bm{y}_{s,\ell} \|^2 .
+  \label{eq:C-abs-shifted}
+\end{equation}
+
+\paragraph{Forward amplitudes and extinction.}
+In the forward direction the phase factor $e_i$ equals that of the
+incident wave.
+With the circular polarisation \eqref{eq:circular-pol}, the two forward
+functionals add up to the right-hand side:
+$\bm{f}_{\theta,\ell} + \bm{f}_{\phi,\ell} = 2k^2\, \bm{b}_\ell$.
+Hence
+\begin{equation}
+  C_{\text{ext},\ell}
+    = \frac{2\pi}{k} \operatorname{Im}
+      \bigl( S_{\text{fw},\theta}^{\text{PCAS}}
+           + S_{\text{fw},\phi}^{\text{PCAS}} \bigr)_\ell ,
+  \label{eq:optical-theorem}
+\end{equation}
+which is the optical theorem in the present normalisation.
+It holds for the existing solver as well and is used as a consistency
+check.
+
+%----------------------------------------------------------------------
+\subsection{Cost and memory}
+\label{sec:shift-cost}
+%----------------------------------------------------------------------
+
+Let $t_{\text{mvp}}$ be the time of one block matrix--vector product and
+$t_{\text{gs}}$ the time of one block inner product and update in the
+Gram--Schmidt process.
+A block GMRES run of $K$ steps costs
+\begin{equation}
+  T(K) \approx K\, t_{\text{mvp}} + \frac{K(K+1)}{2}\, t_{\text{gs}} .
+  \label{eq:gmres-cost}
+\end{equation}
+The independent solves of the sweep cost $\sum_s T(n_s)$ and the
+shifted solve costs $T(\max_s n_s)$ plus the small least-squares
+problems.
+The solver speed-up is therefore
+\begin{equation}
+  S_{\text{solve}} \approx \frac{\sum_{s=1}^{N_m} T(n_s)}{T(\max_s n_s)}
+    \le N_m .
+  \label{eq:shift-speedup}
+\end{equation}
+It approaches $N_m$ when all refractive indices converge at a similar
+rate.
+The lattice generation and the FFT of the interaction tensor are done
+once instead of $N_m$ times.
+
+The Krylov basis needs $16 \cdot 3N \cdot L \cdot (n+1)$ bytes, the
+same as one independent solve on the same lattice.
+The additional storage is $\bar{\mathbf{H}}_n$ and the blocks
+$\mathbf{Y}_s$, which do not scale with $N$.
+The number of dipoles on the common lattice scales as
+$\max_s |m_s|^3$.
+A sweep over a wide range of $|m_p|$ should therefore be split into
+bands, each with its own lattice.
+
+%----------------------------------------------------------------------
+\subsection{Use in the spheroid parameter sweep}
+\label{sec:shift-sweep}
+%----------------------------------------------------------------------
+
+The option \texttt{--shifted-ri} of
+\texttt{run\_dda\_spheroid\_sweep.py} (Sec.~\ref{sec:spheroid-sweep})
+solves all $N_{\mathrm{RI}}$ values of $n_{\mathrm{real}}$ of a
+$(\lambda_0, D_{ve}, \mathrm{AR})$ slot with one shifted solve.
+The number of solves per wavelength drops from
+$N_{D_{ve}} \times N_{\mathrm{RI}} \times N_{\mathrm{AR}}$ to
+$N_{D_{ve}} \times N_{\mathrm{AR}}$.
+The lattice of a slot is always built for the largest $|m_p|$ of the
+whole $n_{\mathrm{real}}$ axis.
+A run that is interrupted and resumed therefore reproduces an
+uninterrupted run.
+
+The default mode builds one lattice per refractive index.
+The two modes agree to rounding error at the largest
+$n_{\mathrm{real}}$, where the lattices coincide.
+At the lower values they differ at the level of the discretisation
+error.
+An output file keeps the mode it was created with.
+The root attributes \texttt{shifted\_ri} and \texttt{lattice\_policy}
+mark a file of the shifted mode.
+The option cannot be combined with a nonzero uniaxial birefringence
+(\texttt{--delta-n-eff}).
+
+%----------------------------------------------------------------------
+\subsection{Verification}
+\label{sec:shift-verification}
+%----------------------------------------------------------------------
+
+The shifted path is compared with the existing solver in the pytest
+suite under \texttt{tests/}.
+The reference case is an oblate spheroid with
+$D_{ve} = \SI{0.35}{\micro\meter}$ and $b/c = 2$ at
+$\lambda_0 = \SI{0.638}{\micro\meter}$ in air, with $L = 5$
+orientations and $N = 2183$ dipoles.
+The refractive indices are $m_p = 1.35$, $1.50$, $1.70$ and
+$1.50 + 0.1i$ on the lattice built for $1.70$.
+Table~\ref{tab:shift-verification} lists the results.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Agreement of the shifted block GMRES with independent
+           solves by the existing block GMRES on the same lattice.
+           Differences are maximum relative differences.}
+  \label{tab:shift-verification}
+  \begin{tabular}{ll}
+    \toprule
+    Quantity & Result \\
+    \midrule
+    Number of steps $n_s$ at $\text{tol} = 10^{-2}$
+      & 4, 5, 6, 5 (identical) \\
+    Number of steps $n_s$ at $\text{tol} = 10^{-5}$
+      & 8, 10, 13, 10 (identical) \\
+    Number of steps $n_s$ at $\text{tol} = 10^{-9}$
+      & 14, 17, 22, 17 (identical) \\
+    Solution $\mathbf{X}_s$ (Frobenius norm)
+      & \num{1.0e-15} \\
+    $C_{\text{ext}}$, $C_{\text{abs}}$,
+      $S_{\text{fw}}^{\text{PCAS}}$, $S_{\text{bk}}^{\text{OCBS}}$
+      from \eqref{eq:C-ext-shifted}--\eqref{eq:C-abs-shifted}
+      & below \num{7e-15} \\
+    Optical theorem \eqref{eq:optical-theorem}
+      & below \num{1e-12} \\
+    Sweep output with \texttt{--shifted-ri}
+      (reduced grid, $L = 13$)
+      & \num{1.6e-15} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The sphere of \texttt{test\_dda.ipynb} solved through the shifted path
+gives the same deviations from Mie theory (Sec.~\ref{sec:mie}) as the
+existing solver on the same lattice.
+These deviations are within the tolerance of \SI{1}{\percent}.
+On the reduced sweep grid the shifted mode and the default mode differ
+by up to \SI{0.5}{\percent} below the largest $n_{\mathrm{real}}$.
+This difference is caused by the change of lattice, not by the solver.
 
 %======================================================================
 \section{Computational Performance: Old vs.\ New Implementation}
@@ -1348,6 +1749,36 @@ are obtained from $S_1$ and $S_2$ at $\theta = 0$ and $\theta = \pi$.
   single particles in unbounded fluid flow: CAS-v2 protocol,''
   \textit{Opt.\ Express} \textbf{32}(21), 36500--36522 (2024).
   \url{https://doi.org/10.1364/OE.533776}.
+
+\bibitem{SaadSchultz1986}
+  Y.~Saad and M.~H.~Schultz,
+  ``GMRES: A generalized minimal residual algorithm for solving
+  nonsymmetric linear systems,''
+  \textit{SIAM J.\ Sci.\ Stat.\ Comput.} \textbf{7}(3), 856--869 (1986).
+
+\bibitem{SimonciniGallopoulos1996}
+  V.~Simoncini and E.~Gallopoulos,
+  ``Convergence properties of block GMRES and matrix polynomials,''
+  \textit{Linear Algebra Appl.} \textbf{247}, 97--119 (1996).
+
+\bibitem{FrommerGlassner1998}
+  A.~Frommer and U.~Gl\"assner,
+  ``Restarted GMRES for shifted linear systems,''
+  \textit{SIAM J.\ Sci.\ Comput.} \textbf{19}(1), 15--26 (1998).
+
+\bibitem{Argentin2026}
+  C.~Argentin, K.~G.~Inzhevatkin, and M.~A.~Yurkin,
+  ``Efficient refractive-index sweeps in the discrete dipole approximation
+  using shifted Krylov methods,''
+  arXiv:2611.15909 (2026).
+
+\bibitem{Moteki2026}
+  N.~Moteki,
+  ``Block-Krylov discrete-dipole and volume-integral-equation solvers for
+  multi-orientation light scattering across the dielectric--metal contrast
+  range,''
+  \textit{J.\ Quant.\ Spectrosc.\ Radiat.\ Transfer} \textbf{362},
+  110046 (2026).
 
 \bibitem{blockVIEM}
   N.~Moteki,

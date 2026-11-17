@@ -1,3 +1,4 @@
+import time
 from typing import NamedTuple, Optional
 
 import numpy as np
@@ -426,6 +427,7 @@ class ShiftedBlockGMRESResult(NamedTuple):
     errs: np.ndarray          # shape (N_m,) float; final ‖B − A_s X_s‖_F / ‖B‖_F
     err_history: np.ndarray   # shape (k_fin, N_m) float; NaN after shift s has stopped
     X_list: Optional[list]    # length N_m; X_s has shape (f*N_occ, L), or None
+    timings: dict             # wall time [s] per part: 'mvp', 'gs', 'lsq', 'proj'
 
 
 def _block_mvp_offdiag(n, f, Au_til, full_idx, S):
@@ -508,10 +510,13 @@ def bl_gmres_shifted_mvp_fft(n, f, address, Au_til, sigmas, B, tol, itermax,
     Returns
     -------
     ShiftedBlockGMRESResult
-        Named tuple (Y_list, Lambda, G, iters, errs, err_history, X_list). See
-        the class for shapes. `iters` counts block-Arnoldi steps from 1, so it
-        equals `iter_fin + 1` of `bl_gmres_mvp_fft`. A shift with
-        `errs[s] >= tol` did not converge within `itermax`.
+        Named tuple (Y_list, Lambda, G, iters, errs, err_history, X_list,
+        timings). See the class for shapes. `iters` counts block-Arnoldi steps
+        from 1, so it equals `iter_fin + 1` of `bl_gmres_mvp_fft`. A shift with
+        `errs[s] >= tol` did not converge within `itermax`. `timings` holds the
+        wall time [s] spent in the matrix–vector products ('mvp'), the block
+        Gram–Schmidt and thin QR ('gs'), the per-shift least squares ('lsq')
+        and the projections F^H V_k ('proj').
     """
     sigmas = np.atleast_1d(np.asarray(sigmas, dtype=np.complex128))
     if sigmas.ndim != 1:
@@ -534,7 +539,8 @@ def bl_gmres_shifted_mvp_fft(n, f, address, Au_til, sigmas, B, tol, itermax,
             iters=np.zeros(N_m, dtype=np.int64),
             errs=np.zeros(N_m, dtype=np.float64),
             err_history=np.zeros((1, N_m), dtype=np.float64),
-            X_list=[np.zeros_like(B) for _ in range(N_m)] if return_X else None)
+            X_list=[np.zeros_like(B) for _ in range(N_m)] if return_X else None,
+            timings={'mvp': 0.0, 'gs': 0.0, 'lsq': 0.0, 'proj': 0.0})
 
     # Initial residual (X0 = 0 ⇒ R0 = B) and its thin QR: R0 = V1 · Λ
     V1, Lambda = np.linalg.qr(B, mode='reduced')   # V1: (N,L),  Lambda: (L,L)
@@ -550,12 +556,16 @@ def bl_gmres_shifted_mvp_fft(n, f, address, Au_til, sigmas, B, tol, itermax,
     errs = np.full(N_m, np.inf, dtype=np.float64)
     err_history = []
     active = list(range(N_m))
+    timings = {'mvp': 0.0, 'gs': 0.0, 'lsq': 0.0, 'proj': 0.0}
 
     for k in range(1, itermax + 1):
         Vk = Vblocks[k - 1]
+        t0 = time.perf_counter()
         if proj_ops is not None:
             # G block of V_k: (n_obs, L, L), element [o, l, :] = F_o[:, l]^H V_k
             G_blocks.append(np.stack([proj_ops[o].conj().T @ Vk for o in range(n_obs)]))
+        t1 = time.perf_counter()
+        timings['proj'] += t1 - t0
 
         if k > cap:
             cap = min(itermax, 2 * cap)
@@ -563,7 +573,10 @@ def bl_gmres_shifted_mvp_fft(n, f, address, Au_til, sigmas, B, tol, itermax,
             Hnew[:k * L, :(k - 1) * L] = Hbar[:k * L, :(k - 1) * L]
             Hbar = Hnew
 
+        t1 = time.perf_counter()
         W = _block_mvp_offdiag(n, f, Au_til, full_idx, Vk)
+        t2 = time.perf_counter()
+        timings['mvp'] += t2 - t1
 
         # Block Gram–Schmidt, same order as bl_gmres_mvp_fft.
         col = slice((k - 1) * L, k * L)
@@ -576,6 +589,8 @@ def bl_gmres_shifted_mvp_fft(n, f, address, Au_til, sigmas, B, tol, itermax,
         Vk1, Hk1k = np.linalg.qr(W, mode='reduced')
         Hbar[k * L:(k + 1) * L, col] = Hk1k
         Vblocks.append(Vk1)
+        t3 = time.perf_counter()
+        timings['gs'] += t3 - t2
 
         # Augmented matrix [Hbar_k | E_1 Λ], shape ((k+1)L, (k+1)L). Its QR gives
         # [[R, c_top], [0, c_bot]] with ‖c_bot‖_F the least-squares residual.
@@ -599,6 +614,7 @@ def bl_gmres_shifted_mvp_fft(n, f, address, Au_til, sigmas, B, tol, itermax,
                 errs[s] = err
                 active.remove(s)
         err_history.append(err_row)
+        timings['lsq'] += time.perf_counter() - t3
 
         if verbose:
             print("iter= {:}, active shifts= {:}, err range= [{:.4e}, {:.4e}]".format(
@@ -623,4 +639,5 @@ def bl_gmres_shifted_mvp_fft(n, f, address, Au_til, sigmas, B, tol, itermax,
 
     return ShiftedBlockGMRESResult(
         Y_list=Y_list, Lambda=Lambda, G=G, iters=iters, errs=errs,
-        err_history=np.asarray(err_history, dtype=np.float64), X_list=X_list)
+        err_history=np.asarray(err_history, dtype=np.float64), X_list=X_list,
+        timings=timings)

@@ -1,4 +1,4 @@
-# block-DDA_Py  [![version](https://img.shields.io/badge/version-v0.8.1-blue)](https://github.com/NobuhiroMoteki/block-DDA_Py/releases)
+# block-DDA_Py  [![version](https://img.shields.io/badge/version-v0.8.2-blue)](https://github.com/NobuhiroMoteki/block-DDA_Py/releases)
 
 ## 📌 Description
 A Python code for the Discrete Dipole Approximation (DDA) using block-Krylov type iterative solvers, with custom features for light-scattering simulations of environmental particles (e.g., mineral dust).
@@ -8,7 +8,7 @@ A Python code for the Discrete Dipole Approximation (DDA) using block-Krylov typ
 2. Supports birefringent particle materials (anisotropic complex refractive index along x, y, z axes).
 3. Supports a parametric irregular shape model suitable for mineral dust particles: Gaussian Random Ellipsoid ([GRE](https://doi.org/10.1016/j.jqsrt.2011.02.013)).
 4. The lattice spacing is set directly from the user-specified **dpl** (dipoles per wavelength inside the particle): `d = λ₀ / (max|m_p| × dpl)`. The default is `dpl=17`. After discretisation, the lattice is rescaled so that the volume-equivalent radius matches `r_v_base` exactly (**volume-preserving lattice rescaling**; see [docs/theory_note.pdf](docs/theory_note.pdf), Sec. 8.3–8.4).
-5. Supports simulation of the key quantities in the Complex Amplitude Sensing version 2 ([CAS-v2](https://doi.org/10.1364/OE.533776)): the polarized complex forward-scattering amplitudes {Re*S*(0°)<sub>*s*</sub>, Im*S*(0°)<sub>*s*</sub>, Re*S*(0°)<sub>*p*</sub>, Im*S*(0°)<sub>*p*</sub>} and the complex backward-scattering amplitude *S*<sub>bak</sub>.
+5. Supports simulation of the key quantities in the Complex Amplitude Sensing version 2 ([CAS-v2](https://doi.org/10.1364/OE.533776)): the polarized complex forward-scattering amplitudes {Re*S*(0°)<sub>*s*</sub>, Im*S*(0°)<sub>*s*</sub>, Re*S*(0°)<sub>*p*</sub>, Im*S*(0°)<sub>*p*</sub>} and the complex backward-scattering amplitude *S*<sub>bak</sub> = (−*S*<sub>11</sub> + *S*<sub>22</sub>)/2 (definition of the erratum to the CAS-v2 paper, from v0.8.2).
 6. For reference, block-DDA_Py outputs a comparison of the DDA solution to the Mie solution for a volume-equivalent sphere with axes-average refractive index.
 7. Supports parameter sweeps over vacuum wavelength, medium refractive index, particle refractive index (including anisotropic cases), and shape parameters, with results stored in HDF5 format.
 8. **Spheroid mode**: For spheroids (`ab_ratio=1`, `beta=0`), the azimuthal orientation average is computed analytically from a single DDA solve per polar angle, reducing the required number of solves from $N_\theta \times N_\phi$ to $N_\theta$ (see [docs/theory_note.pdf](docs/theory_note.pdf), Sec. 9). While the T-matrix method is generally faster for spheroids, it becomes numerically unstable at extreme aspect ratios; DDA with spheroid mode provides a stable alternative in such regimes.
@@ -287,6 +287,11 @@ Spheroid mode reduces both peak memory and computation time by a factor of **1/4
 - v0.8.0: `run_dda_spheroid_sweep.py --shifted-ri`: the `RI_real` axis is solved in one process per slot; the default mode is unchanged
 - v0.8.0: `tests/`: pytest suite comparing the shifted path with the existing solver and with Mie theory
 - v0.8.1: The per-shift least-squares problems are handled by an incremental block-Givens QR (`lsq_method="incremental"`, default). The dense method of v0.8.0 is kept as `lsq_method="dense"`. At 64 orientations the incremental method cuts the least-squares time by a factor of 2.3 to 6.8. The results of the shifted sweep change at rounding level only
+
+### Corrected backward-scattering amplitude (v0.8.2)
+- v0.8.2: `S_bk_OCBS` (*S*<sub>bak</sub> of CAS-v2) is now (−*S*<sub>11</sub> + *S*<sub>22</sub>)/2 at the backward direction. This is the corrected Eq. (28) of Moteki and Adachi (2024), given in the erratum to that paper. Up to v0.8.1 the code followed the printed equation with 1/√2 in place of 1/2. The change applies to `compute_OCBS_observable_S_bk`, to `compute_observables_shifted` and to the Mie reference `mie_compute_q_and_s`.
+- Values of `S_bk_OCBS` and `S_bk_OCBS_mie` from v0.8.1 or earlier are √2 times the present ones. The phase is the same, and so is the ratio of the DDA value to the Mie value. This includes the files under `dda_results/paper/`, which are kept as produced. Multiply their backward amplitudes by 1/√2 to compare with v0.8.2.
+- The forward-scattering amplitudes and the cross sections are not affected.
 
 ### Environment
 - **Python**: 3.12 (Windows) → **3.13 (Linux/WSL2)**

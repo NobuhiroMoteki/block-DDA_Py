@@ -68,6 +68,10 @@ def test_matches_stored_baseline(current):
     for key, now in current.items():
         ref = stored[key]
         now = np.asarray(now)
+        if key.endswith("/S_bk_OCBS"):
+            # The baseline was generated with S_bk_OCBS = (-S_theta + S_phi)/sqrt(2), the
+            # printed Eq. (28) of Moteki and Adachi (2024). The erratum has 1/2.
+            ref = ref / np.sqrt(2)
         if np.issubdtype(now.dtype, np.integer):
             assert np.array_equal(now, ref), key
         elif key.endswith("/X"):

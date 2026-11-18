@@ -28,7 +28,9 @@ def mie_compute_q_and_s(wl_0, m_m, r_p, m_p, nang=3):
     Qabs : float    absorption efficiency  Cabs / (π r_p²)
     Qext : float    extinction efficiency  Cext / (π r_p²)
     S_fw : complex64  PCAS forward-scattering observable  (S11[0]+S22[0])/2
-    S_bk : complex64  OCBS backscattering observable      (-S11[-1]+S22[-1])/√2
+    S_bk : complex64  OCBS backscattering observable      (-S11[-1]+S22[-1])/2
+           (corrected Eq. (28) of Moteki and Adachi 2024, erratum; equals
+           S22[-1] for a sphere)
     """
     nang = int(nang)
 
@@ -112,6 +114,6 @@ def mie_compute_q_and_s(wl_0, m_m, r_p, m_p, nang=3):
     S22 = S1 / (-1j * k)
 
     S_fw = np.complex64((S11[0]  + S22[0])  / 2.0)          # PCAS forward
-    S_bk = np.complex64((-S11[-1] + S22[-1]) / np.sqrt(2))  # OCBS backward
+    S_bk = np.complex64((-S11[-1] + S22[-1]) / 2.0)         # OCBS backward
 
     return Qsca, Qabs, Qext, S_fw, S_bk

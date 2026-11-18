@@ -257,6 +257,29 @@ class DiscreteDipoles(Target, IncidentField):
 
 
     def compute_OCBS_observable_S_bk(self):
+        """
+        Backward scattering amplitude of the OCBS signal, S_bak of CAS-v2.
+
+        With the amplitude-matrix elements S_ij at the backward direction,
+
+            S_bk_OCBS_theta = S_11 + i S_12,
+            S_bk_OCBS_phi   = S_22 - i S_21,
+            S_bk_OCBS       = (-S_bk_OCBS_theta + S_bk_OCBS_phi) / 2
+                            = (-S_11 + S_22) / 2,
+
+        where the last step uses the backscattering theorem S_21 = -S_12. This
+        is the corrected Eq. (28) of Moteki and Adachi, Opt. Express 32, 36500
+        (2024), given in its erratum. The quarter-wave plate in the return path
+        has its axes at 45 deg to the linear polarizations, so each backscattered
+        component reaches the output polarization with the amplitude factor
+        1/sqrt(2). The printed Eq. (28) has 1/sqrt(2) in place of 1/2. Versions
+        up to 0.8.1 of this code followed the printed equation, and their
+        S_bk_OCBS is sqrt(2) times the present one.
+
+        Returns
+        -------
+        S_bk_OCBS : ndarray, shape (L,), complex128   backward amplitude [um]
+        """
         # Phase factor on each dipole for backward direction: shape (L, N)
         e_bk = np.exp(1j * self.k * (self.u_sca_bk_vec_P @ self.lattice_pos_in_target.T))
 
@@ -267,7 +290,7 @@ class DiscreteDipoles(Target, IncidentField):
         sqrt2 = np.sqrt(2)
         self.S_bk_OCBS_theta = self.k ** 2 * (P_proj_theta * np.conj(sqrt2      * e_bk)).sum(axis=1)
         self.S_bk_OCBS_phi   = self.k ** 2 * (P_proj_phi   * np.conj(sqrt2 * 1j * e_bk)).sum(axis=1)
-        self.S_bk_OCBS = (-self.S_bk_OCBS_theta + self.S_bk_OCBS_phi) / sqrt2
+        self.S_bk_OCBS = (-self.S_bk_OCBS_theta + self.S_bk_OCBS_phi) / 2
         return self.S_bk_OCBS
 
 
@@ -449,7 +472,6 @@ class DiscreteDipoles(Target, IncidentField):
         """
         res = self.shifted_result
         N_m, L = self.sigmas.size, self.L
-        sqrt2 = np.sqrt(2)
 
         C_ext = np.full((N_m, L), np.nan, dtype=np.float64)
         C_abs = np.full((N_m, L), np.nan, dtype=np.float64)
@@ -477,5 +499,5 @@ class DiscreteDipoles(Target, IncidentField):
             "S_fw_PCAS_phi": S[1],
             "S_bk_OCBS_theta": S[2],
             "S_bk_OCBS_phi": S[3],
-            "S_bk_OCBS": (-S[2] + S[3]) / sqrt2,
+            "S_bk_OCBS": (-S[2] + S[3]) / 2,
         }

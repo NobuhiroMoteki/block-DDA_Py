@@ -13,7 +13,7 @@
 \large Discrete Dipole Approximation with FFT-accelerated\\
 Block-Krylov Solver for Light Scattering by Arbitrary Particles}
 \author{N.\ Moteki}
-\date{Last updated: 2026-11-18 (corresponds to block-DDA\_Py v0.8.1)}
+\date{Last updated: 2026-11-18 (corresponds to block-DDA\_Py v0.8.2)}
 
 \begin{document}
 \maketitle
@@ -34,7 +34,7 @@ the local electric field, which consists of the incident wave plus the fields
 radiated by all other dipoles.
 
 This document describes the theoretical background and the algorithms
-that are implemented in version~0.8.1 of
+that are implemented in version~0.8.2 of
 \texttt{block-DDA\_Py}, covering:
 \begin{enumerate}
   \item the DDA formulation and polarisability prescription
@@ -1653,7 +1653,7 @@ The OCBS (Optical Coherence Backscattering Sensor) amplitude is then
 \begin{equation}
   S_{\text{bk}}^{\text{OCBS}}
     = \frac{-S_{\text{bk},\theta}^{\text{OCBS}}
-            + S_{\text{bk},\phi}^{\text{OCBS}}}{\sqrt{2}}.
+            + S_{\text{bk},\phi}^{\text{OCBS}}}{2}.
   \label{eq:S-bk-ocbs}
 \end{equation}
 More precisely, the $\theta$- and $\phi$-components correspond to
@@ -1669,8 +1669,38 @@ elements~\cite{Mishchenko2002}:
 \end{equation}
 The backscattering theorem $S_{21}(\pi) = -S_{12}(\pi)$ causes the
 off-diagonal contributions to cancel when the two components are
-combined in \eqref{eq:S-bk-ocbs}, yielding an expression equivalent to
-Eq.~(28) of Moteki and Adachi~\cite{Moteki2024}.
+combined in \eqref{eq:S-bk-ocbs}:
+\begin{equation}
+  S_{\text{bk}}^{\text{OCBS}}
+    = \frac{1}{2}\,\bigl[-S_{11}(\pi) + S_{22}(\pi)\bigr].
+  \label{eq:S-bk-amplitude-matrix}
+\end{equation}
+This is the backward amplitude $S_{\text{bak}}$ of the CAS-v2 protocol in
+the corrected form of Eq.~(28) of Moteki and
+Adachi~\cite{Moteki2024}, which is given in the erratum to that
+paper~\cite{Moteki2024Erratum}.
+
+The factor $1/2$ has the following origin.
+The quarter-wave plate in the return path has its axes at \ang{45} to
+the linear polarisations.
+Each of the two backscattered components therefore reaches the output
+polarisation with the amplitude factor $1/\sqrt{2}$.
+Together with the factor $1/\sqrt{2}$ of the circularly polarised
+incident wave this gives $1/2$.
+The printed Eq.~(28) of Ref.~\cite{Moteki2024} adds the two components
+at full amplitude and has $1/\sqrt{2}$ instead.
+For a sphere $S_{12} = S_{21} = 0$ and $S_{22}(\pi) = -S_{11}(\pi)$,
+so \eqref{eq:S-bk-amplitude-matrix} reduces to
+$S_{\text{bk}}^{\text{OCBS}} = S_{22}(\pi)$.
+The detected power then equals the backscattered power, whereas the
+printed equation gives twice that power.
+In the Rayleigh limit $S_{\text{bk}}^{\text{OCBS}}$ equals the forward
+amplitude.
+
+Versions of block-DDA\_Py up to 0.8.1 used the printed equation.
+Their $S_{\text{bk}}^{\text{OCBS}}$, including the Mie reference value,
+is $\sqrt{2}$ times the present one.
+The phase is the same.
 
 %======================================================================
 \section{Gaussian Random Ellipsoid (GRE) Shape Model}
@@ -2139,6 +2169,17 @@ where $\pi_n$ and $\tau_n$ are the angular functions computed via
 upward recurrence.
 The forward and backward scattering amplitudes used for validation
 are obtained from $S_1$ and $S_2$ at $\theta = 0$ and $\theta = \pi$.
+With $S_{11} = S_2 / (-ik)$ and $S_{22} = S_1 / (-ik)$ they are
+\begin{equation}
+  S_{\text{fw}}^{\text{Mie}}
+    = \frac{1}{2}\,\bigl[S_{11}(0) + S_{22}(0)\bigr],
+  \qquad
+  S_{\text{bk}}^{\text{Mie}}
+    = \frac{1}{2}\,\bigl[-S_{11}(\pi) + S_{22}(\pi)\bigr]
+    = S_{22}(\pi) .
+  \label{eq:S-mie-observables}
+\end{equation}
+The backward amplitude follows \eqref{eq:S-bk-amplitude-matrix}.
 
 \begin{thebibliography}{99}
 \bibitem{Purcell1973}
@@ -2199,6 +2240,12 @@ are obtained from $S_1$ and $S_2$ at $\theta = 0$ and $\theta = \pi$.
   single particles in unbounded fluid flow: CAS-v2 protocol,''
   \textit{Opt.\ Express} \textbf{32}(21), 36500--36522 (2024).
   \url{https://doi.org/10.1364/OE.533776}.
+
+\bibitem{Moteki2024Erratum}
+  N.~Moteki and K.~Adachi,
+  ``Measuring the polarized complex forward-scattering amplitudes of
+  single particles in unbounded fluid flow: CAS-v2 protocol: erratum,''
+  \textit{Opt.\ Express} (submitted, 2026).
 
 \bibitem{SaadSchultz1986}
   Y.~Saad and M.~H.~Schultz,

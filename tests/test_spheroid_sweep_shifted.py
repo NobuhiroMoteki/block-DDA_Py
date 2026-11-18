@@ -132,14 +132,14 @@ def test_default_mode_is_byte_identical_to_pre_change_script(workdir, old_script
         for key in old.attrs:
             if key != "block_dda_version":
                 assert old.attrs[key] == new.attrs[key], key
-        assert new.attrs["block_dda_version"] == "0.8.1"
+        assert new.attrs["block_dda_version"] == "0.8.2"
         assert "shifted_ri" not in new.attrs and "lattice_policy" not in new.attrs
 
         # Provenance: same keys and the SAME config hash.
         assert set(old["provenance"].attrs) == set(new["provenance"].attrs)
         for key in ("producer_repo", "contract_version", "config_hash"):
             assert old["provenance"].attrs[key] == new["provenance"].attrs[key], key
-        assert new["provenance"].attrs["producer_version"] == "0.8.1"
+        assert new["provenance"].attrs["producer_version"] == "0.8.2"
 
 
 # ── 2. shifted mode against per-RI solves on the common lattice ──────────────

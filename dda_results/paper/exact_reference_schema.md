@@ -43,6 +43,11 @@ the same code path for both. The doublet HDF5 already shipped by
   S_fw_mean  = (S(0)_theta + S(0)_phi) / 2
   S_bk       = (S11 + S22 + i*S12 - i*S21)(180°) / sqrt(2)
   ```
+  Note (2026-11-18): the factor `1/sqrt(2)` of `S_bk` is that of the printed
+  Eq. (28) of Moteki and Adachi (2024). The files of this directory were
+  produced with it and are kept as produced. The erratum to that paper has
+  `1/2`, and block-DDA_Py follows the erratum from v0.8.2. The stored `S_bk`
+  values are therefore `sqrt(2)` times those of the current code.
 
 ## Common dataset / attribute layout
 

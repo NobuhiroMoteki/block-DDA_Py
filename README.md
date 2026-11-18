@@ -306,6 +306,11 @@ This project is licensed under the MIT License. See the LICENSE file for details
     - Muinonen, K., & Pieniluoma, T. (2011). Light scattering by Gaussian random ellipsoid particles: First results with discrete-dipole approximation. Journal of Quantitative Spectroscopy and Radiative Transfer, 112(11), 1747–1752.
 
 - Block-Krylov Subspace Methods
+  - Saad, Y., & Schultz, M. H. (1986). GMRES: A generalized minimal residual algorithm for solving nonsymmetric linear systems. SIAM Journal on Scientific and Statistical Computing, 7(3), 856–869.
+  - Simoncini, V., & Gallopoulos, E. (1996). Convergence properties of block GMRES and matrix polynomials. Linear Algebra and its Applications, 247, 97–119.
+  - Moteki, N. (2026). Block-Krylov discrete-dipole and volume-integral-equation solvers for multi-orientation light scattering across the dielectric–metal contrast range. Journal of Quantitative Spectroscopy and Radiative Transfer, 362, 110046.
+  - Frommer, A., & Glässner, U. (1998). Restarted GMRES for shifted linear systems. SIAM Journal on Scientific Computing, 19(1), 15–26.
+  - Argentin, C., Inzhevatkin, K. G., & Yurkin, M. A. (2026). Efficient refractive-index sweeps in the discrete dipole approximation using shifted Krylov methods. arXiv:2611.15909.
   - El Guennouni, A., Jbilou, K., & Sadok, H. (2003). A block version of BiCGSTAB for linear systems with multiple right-hand sides. Electronic Transactions on Numerical Analysis, 16, 129–142.
   - Gu, X. M., Carpentieri, B., Huang, T. Z., & Meng, J. (2016). Block variants of the COCG and COCR methods for solving complex symmetric linear systems with multiple right-hand sides. In Numerical Mathematics and Advanced Applications ENUMATH 2015 (pp. 305–313). Springer International Publishing.
 

@@ -1408,6 +1408,101 @@ dominates the least-squares part, and this cost is the same at every
 step.
 The peak resident memory changes by less than \SI{0.1}{\gibi\byte}.
 
+%----------------------------------------------------------------------
+\subsection{Relation to the shifted solver of ADDA}
+\label{sec:shift-related}
+%----------------------------------------------------------------------
+
+Argentin et al.~\cite{Argentin2026} introduced the shifted solve of
+refractive-index sweeps to the DDA and implemented it in the ADDA code.
+Their method and the one of this section rest on the same two facts.
+The systems of a homogeneous isotropic particle differ by scalar shifts
+\eqref{eq:shifted-systems}, and the Krylov subspace does not depend on
+the shift.
+Both need one lattice for all refractive indices and the same scalar
+polarisability for every dipole.
+The two methods differ in the Krylov method, and this has the following
+consequences.
+
+\paragraph{Basis and iterate.}
+ADDA uses the Lanczos process for complex symmetric matrices.
+It builds the basis by a three-term recurrence with the bilinear form
+$\bm{u}^\top \bm{v}$, without complex conjugation.
+The iterate is that of the biconjugate gradient method for complex
+symmetric matrices (BiCG$_{\text{CS}}$, also known as COCG).
+It is defined by a projection condition and does not minimise the
+residual.
+The authors note that the usual convergence guarantees of the
+conjugate gradient method do not apply and that the recurrence can
+break down.
+block-DDA\_Py uses the block Arnoldi process with full orthogonalisation
+in the Hermitian inner product (Sec.~\ref{sec:shift-arnoldi}).
+Its iterate minimises the residual norm of each shift
+\eqref{eq:shifted-lsq}.
+The residual norm therefore never increases.
+For one right-hand side and the same number of steps it is not larger
+than that of any other iterate from the same Krylov subspace.
+
+\paragraph{Work and memory.}
+The Lanczos recurrence needs the same work at every step and a fixed
+number of vectors.
+ADDA stores two vectors for each shift, the solution and the search
+direction.
+The memory added to an unshifted solve is $96\,(N_m + 1.5)\,N$ bytes
+(Eq.~(15) of Ref.~\cite{Argentin2026}).
+It grows with the number of refractive indices and not with the number
+of steps.
+The Arnoldi process keeps the whole basis.
+Its memory grows with the number of steps and its Gram--Schmidt cost
+grows quadratically (Sec.~\ref{sec:shift-cost}).
+Neither depends on $N_m$, because the solutions are not stored and the
+state of each shift has a size that does not scale with $N$.
+The method of ADDA therefore suits long iterations with a moderate
+number of refractive indices.
+The method of block-DDA\_Py suits many refractive indices with a
+moderate number of steps.
+
+\paragraph{Right-hand sides.}
+The shifted solver of ADDA treats one incident wave at a time.
+block-DDA\_Py solves all $L$ orientations and all $N_m$ refractive
+indices in one block process.
+Ref.~\cite{Argentin2026} names the combination of the shifted solve
+with strategies for multiple right-hand sides as a route for future
+work.
+
+\paragraph{Observables.}
+In ADDA the scattered fields are computed from each solution
+separately.
+This step is not shared between the refractive indices.
+It dominates the run time once the solve is accelerated
+(Table~2 of Ref.~\cite{Argentin2026}), and the authors describe a
+projection strategy as a prototype.
+In block-DDA\_Py the cross sections and the forward and backward
+amplitudes follow from the coefficient blocks $\mathbf{Y}_s$ through
+projections that are accumulated during the Arnoldi process
+(Sec.~\ref{sec:shift-observables}).
+Their cost per refractive index does not scale with $N$.
+
+\paragraph{Agreement with independent solves.}
+Ref.~\cite{Argentin2026} reports agreement with independent solves at
+the level of rounding error for short Krylov sequences and at the level
+of the stopping tolerance for long ones.
+The difference comes from rounding errors in the recurrences.
+In the tests of Secs.~\ref{sec:shift-verification}
+and~\ref{sec:shift-benchmark} the shifted block GMRES gave the same
+number of steps as the independent block GMRES and solutions that agree
+to rounding error.
+The longest of these runs had 58 steps.
+
+\paragraph{Reported performance.}
+Ref.~\cite{Argentin2026} treats a sphere with 441 complex refractive
+indices.
+The number of matrix--vector products drops by a factor of 130 and the
+wall time by a factor of up to 40.
+The benchmark of Sec.~\ref{sec:shift-benchmark} has 15 or 30 real
+refractive indices, 5 to 64 orientations and a different reference, so
+the numbers are not directly comparable.
+
 %======================================================================
 \section{Computational Performance: Old vs.\ New Implementation}
 \label{sec:performance}

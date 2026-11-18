@@ -486,16 +486,26 @@ def _shifted_lstsq_dense(Hbar, Lambda, sigma, k):
     return Y, float(np.linalg.norm(R_aug[kL:, kL:]))
 
 
-def _shifted_lstsq_hessenberg(Hbar, Lambda, sigma, k):
+def _shifted_lstsq_hessenberg(Hbar, Lambda, sigma, k, QH=None):
     """
     Solve  min_Y ‖E_1 Λ − (Hbar_k + sigma Ibar_k) Y‖_F  by a block-Givens QR.
 
     Same problem as `_shifted_lstsq_dense`. The block Hessenberg structure is
-    used: block column j is eliminated by a QR of the 2L × L block that holds
-    its diagonal and subdiagonal blocks, and the 2L × 2L orthogonal factor is
-    applied to the columns to its right. The cost is O(k^2 L^3).
+    used: block column j is eliminated by a 2L × 2L unitary transformation of
+    the two block rows that hold its diagonal and subdiagonal blocks, and the
+    transformation is applied to the columns to its right. The cost is
+    O(k^2 L^3).
 
-    Parameters and returns: see `_shifted_lstsq_dense`.
+    Parameters
+    ----------
+    Hbar, Lambda, sigma, k : see `_shifted_lstsq_dense`
+    QH : None or sequence of k complex arrays (2L, 2L)
+         The transformations Q_j^H of the incremental QR of this shift. If
+         None, they are computed here by QR factorisations of 2L × L blocks.
+
+    Returns
+    -------
+    Y, res : see `_shifted_lstsq_dense`
     """
     L = Lambda.shape[0]
     kL = k * L
@@ -506,9 +516,12 @@ def _shifted_lstsq_hessenberg(Hbar, Lambda, sigma, k):
     M[diag, diag] += sigma
     for j in range(k):
         rows = slice(j * L, (j + 2) * L)
-        Qmat, Rmat = np.linalg.qr(M[rows, j * L:(j + 1) * L], mode='complete')
-        M[rows, (j + 1) * L:] = Qmat.conj().T @ M[rows, (j + 1) * L:]
-        M[rows, j * L:(j + 1) * L] = Rmat
+        if QH is None:
+            Qh = np.linalg.qr(M[rows, j * L:(j + 1) * L], mode='complete')[0].conj().T
+        else:
+            Qh = QH[j]
+        M[rows, j * L:] = Qh @ M[rows, j * L:]
+    # Only the upper triangle of M[:kL, :kL] is read.
     Y = scipy.linalg.solve_triangular(M[:kL, :kL], M[:kL, kL:], lower=False)
     return Y, float(np.linalg.norm(M[kL:, kL:]))
 
@@ -556,10 +569,11 @@ def bl_gmres_shifted_mvp_fft(n, f, address, Au_til, sigmas, B, tol, itermax,
         `bl_gmres_mvp_fft`. Step k applies the transformations of the steps
         1 … k−1 to the new block column and eliminates its subdiagonal block
         by a QR of a 2L × L block. This costs O(k L^3) per shift and step.
-        Only the lower L rows of each 2L × 2L transformation are kept, which
-        is 32 k L^2 bytes per shift after k steps. The triangular factor is
-        not stored. When a shift stops, its Y_s is computed once from the
-        shared Hbar_k by `_shifted_lstsq_hessenberg` at a cost of O(k^2 L^3).
+        The 2L × 2L transformations are kept, which is 64 k L^2 bytes per
+        shift after k steps. The triangular factor is not stored. When a
+        shift stops, its Y_s is computed once by applying its transformations
+        to the shared Hbar_k (`_shifted_lstsq_hessenberg`), at a cost of
+        O(k^2 L^3).
     "dense": the least-squares problem of every active shift is solved from
         scratch at every step by a dense QR of the augmented matrix
         [Hbar_k + sigma_s Ibar_k | E_1 Λ] (`_shifted_lstsq_dense`). No
@@ -635,11 +649,11 @@ def bl_gmres_shifted_mvp_fft(n, f, address, Au_til, sigmas, B, tol, itermax,
     timings = {'mvp': 0.0, 'gs': 0.0, 'lsq': 0.0, 'proj': 0.0}
 
     # State of the incremental block-Givens QR, one row per active shift.
-    # Transformation j is Q_j^H (2L × 2L). Only its lower L rows [QA_j | QB_j]
-    # are needed to carry a new block column or the right-hand side forward.
+    # QH[j-1] holds the transformations Q_j^H of step j. Their lower L rows
+    # carry a new block column and the right-hand side forward. The full
+    # transformations are reused when the shift stops and Y_s is computed.
     incremental = lsq_method == "incremental"
-    QA = []                                         # QA[j-1]: (n_active, L, L)
-    QB = []                                         # QB[j-1]: (n_active, L, L)
+    QH = []                                         # QH[j-1]: (n_active, 2L, 2L)
     rho = np.broadcast_to(Lambda, (N_m, L, L)).copy()   # last block of the transformed RHS
     eye_L = np.eye(L, dtype=np.complex128)
 
@@ -691,33 +705,32 @@ def bl_gmres_shifted_mvp_fft(n, f, address, Au_til, sigmas, B, tol, itermax,
                 blk = Hbar[j * L:(j + 1) * L, col]                  # block row j+1, shared
                 if j == k - 1:
                     blk = blk + shift_blk
-                carry = QA[j - 1] @ carry + QB[j - 1] @ blk         # shape: (n_active, L, L)
+                Qj = QH[j - 1]
+                carry = Qj[:, L:, :L] @ carry + Qj[:, L:, L:] @ blk  # shape: (n_active, L, L)
 
             # New transformation: QR of the 2L × L block [carry; H_{k+1,k}].
             sup = np.empty((len(active), 2 * L, L), dtype=np.complex128)
             sup[:, :L, :] = carry
             sup[:, L:, :] = Hk1k
             Qmat = np.linalg.qr(sup, mode='complete')[0]            # shape: (n_active, 2L, 2L)
-            Qlow = Qmat[:, :, L:].conj().transpose(0, 2, 1)         # lower L rows of Q^H
-            QA.append(np.ascontiguousarray(Qlow[:, :, :L]))
-            QB.append(np.ascontiguousarray(Qlow[:, :, L:]))
+            QH.append(np.ascontiguousarray(Qmat.conj().transpose(0, 2, 1)))
 
             # Transformed right-hand side: rows kL:(k+1)L hold the residual block.
-            rho = QA[k - 1] @ rho                                   # shape: (n_active, L, L)
+            rho = QH[k - 1][:, L:, :L] @ rho                        # shape: (n_active, L, L)
             err_act = np.linalg.norm(rho, axis=(1, 2)) / B_norm
             err_row[active] = err_act
 
             keep = np.ones(len(active), dtype=bool)
             for i, s in enumerate(list(active)):
                 if err_act[i] < tol or k == itermax:
-                    Y_list[s] = _shifted_lstsq_hessenberg(Hbar, Lambda, sigmas[s], k)[0]
+                    Y_list[s] = _shifted_lstsq_hessenberg(
+                        Hbar, Lambda, sigmas[s], k, QH=[q[i] for q in QH])[0]
                     iters[s] = k
                     errs[s] = err_act[i]
                     keep[i] = False
             if not keep.all():
                 active = [s for i, s in enumerate(active) if keep[i]]
-                QA = [q[keep] for q in QA]
-                QB = [q[keep] for q in QB]
+                QH = [q[keep] for q in QH]
                 rho = rho[keep]
         else:
             for s in list(active):

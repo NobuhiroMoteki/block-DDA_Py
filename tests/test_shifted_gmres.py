@@ -267,7 +267,16 @@ def test_structured_least_squares_matches_lstsq():
         rhs[:L] = Lambda
         Y_ref = np.linalg.lstsq(A, rhs, rcond=None)[0]
         res_ref = np.linalg.norm(rhs - A @ Y_ref)
-        for solve in (_shifted_lstsq_dense, _shifted_lstsq_hessenberg):
+        # Transformations of an incremental QR of A, as the solver stores them.
+        QH, M = [], A.copy()
+        for j in range(k):
+            rows = slice(j * L, (j + 2) * L)
+            Qh = np.linalg.qr(M[rows, j * L:(j + 1) * L], mode='complete')[0].conj().T
+            M[rows, j * L:] = Qh @ M[rows, j * L:]
+            QH.append(Qh)
+        solvers = (_shifted_lstsq_dense, _shifted_lstsq_hessenberg,
+                   lambda *args: _shifted_lstsq_hessenberg(*args, QH=QH))
+        for solve in solvers:
             Y, res = solve(Hbar, Lambda, sigma, k)
             assert Y.shape == (kL, L)
             assert _rel_diff(Y, Y_ref) < 1e-12

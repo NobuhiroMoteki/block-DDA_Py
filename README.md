@@ -131,7 +131,7 @@ For dedicated spheroid sweeps over a regular grid of physical parameters, use `r
 
    - All `RI_real` values of a slot share one lattice, built for the largest `|m|` of the `RI_real` axis. The default mode builds a separate lattice for each value. The results of the two modes therefore differ at the level of the discretization error, except at the largest `RI_real`, where the lattices coincide.
    - Use the flag for new output files only. A file keeps the mode it was created with, and resuming it in the other mode is refused.
-   - The flag cannot be combined with a nonzero `--delta-n-eff`.
+   - The flag cannot be combined with a nonzero `--delta-n-eff`. The shifted solve needs the inverse polarizabilities of all axes to change by the same amount, and a sweep at fixed birefringence does not have this property (Sec. 5.5 of `docs/theory_note.pdf`). Birefringent particles are solved one refractive index at a time.
    - The HDF5 layout is unchanged. The root attributes `shifted_ri` and `lattice_policy` and the provenance `config_hash` mark a file made in this mode.
    - Measured gain over the default mode for an oblate spheroid (`b/c = 2`, `D_ve` = 0.6 and 1.0 µm, 13 orientations, `RI_real` from 1.35 to 1.70): the total time drops by a factor of 7.7 to 9.0 with 15 `RI_real` values and by a factor of 15.1 to 17.8 with 30 values. The time of a slot hardly depends on the number of `RI_real` values. The benchmark is `scripts/run_shift_scaling.py`, and the details are in Sec. 5.8 of `docs/theory_note.pdf`.
 
@@ -286,7 +286,6 @@ Spheroid mode reduces both peak memory and computation time by a factor of **1/4
 - v0.8.0: `run_dda_spheroid_sweep.py --shifted-ri`: the `RI_real` axis is solved in one process per slot; the default mode is unchanged
 - v0.8.0: `tests/`: pytest suite comparing the shifted path with the existing solver and with Mie theory
 - v0.8.1: The per-shift least-squares problems are handled by an incremental block-Givens QR (`lsq_method="incremental"`, default). The dense method of v0.8.0 is kept as `lsq_method="dense"`. At 64 orientations the incremental method cuts the least-squares time by a factor of 2.3 to 6.8. The results of the shifted sweep change at rounding level only
-- `DiscreteDipoles.set_interaction_matrix_shifted_offset`: common-offset sweep of a homogeneous anisotropic particle with the shifted block GMRES. The inverse polarizabilities of the three principal axes change by the same amount along the sweep. The birefringence `n_e - n_o` is not constant along such a sweep (Sec. 5.5 of `docs/theory_note.pdf`). The sweep driver does not use it: `--delta-n-eff` keeps `n_e - n_o` fixed and solves each refractive index separately
 
 ### Environment
 - **Python**: 3.12 (Windows) → **3.13 (Linux/WSL2)**

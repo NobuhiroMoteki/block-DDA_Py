@@ -170,6 +170,14 @@ uv run python run_dda_spheroid_sweep.py
 uv run jupyter notebook
 ```
 
+Both sweep drivers accept `--shifted-ri` and `--output PATH`; see the Usage section of `README.md`.
+
+To run the automated tests (about 5 minutes on a laptop):
+
+```sh
+uv run python -m pytest tests -q
+```
+
 To control multi-core FFT parallelism (default = `nproc - 2`):
 
 ```sh
@@ -251,4 +259,5 @@ After installation, all of the following should succeed:
 - [ ] `uv run python --version` returns `Python 3.13.x`
 - [ ] `uv run python -c "import numpy, scipy, h5py, sklearn, matplotlib; print('OK')"` prints `OK`
 - [ ] `test_dda.ipynb` runs end-to-end and the DDA-vs-Mie comparison is within the tolerance commented in the notebook
+- [ ] `uv run python -m pytest tests -q` reports no failures
 - [ ] (Optional) `latexmk -pdf -cd docs/theory_note.tex` rebuilds `docs/theory_note.pdf` without errors

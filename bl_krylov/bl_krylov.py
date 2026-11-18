@@ -528,7 +528,7 @@ def _shifted_lstsq_hessenberg(Hbar, Lambda, sigma, k, QH=None):
 
 def bl_gmres_shifted_mvp_fft(n, f, address, Au_til, sigmas, B, tol, itermax,
                              proj_ops=None, return_X=False, verbose=False,
-                             lsq_method="incremental"):
+                             lsq_method="incremental", diag_ref=None):
     """
     Unrestarted shifted block GMRES without preconditioning.
 
@@ -556,6 +556,17 @@ def bl_gmres_shifted_mvp_fft(n, f, address, Au_til, sigmas, B, tol, itermax,
 
     In the DDA, sigma_s = 1/alpha_E(m_s) for a homogeneous isotropic particle
     and B is the incident field, both on a lattice common to all m_s.
+
+    With `diag_ref` the family is
+
+        (sigma_s I + diag(diag_ref) + A_offdiag) X_s = B,
+
+    and the block-Arnoldi process runs on A_ref = diag(diag_ref) + A_offdiag
+    instead of A_offdiag. Everything above holds with A_offdiag replaced by
+    A_ref. This covers a homogeneous anisotropic particle whose principal
+    values 1/alpha_E all change by the same amount sigma_s along the sweep
+    (common-offset sweep): diag_ref is the diagonal at a reference point and
+    sigma_s the offset from it.
 
     A shift stops at the first step k where its relative residual is below
     `tol`, or at k = itermax. Its Y_s is frozen at that step. The process ends
@@ -594,6 +605,9 @@ def bl_gmres_shifted_mvp_fft(n, f, address, Au_til, sigmas, B, tol, itermax,
     return_X : bool    also assemble and return the full solutions X_s
     verbose  : bool    print the residual range of the active shifts per step
     lsq_method : str   "incremental" (default) or "dense", see above
+    diag_ref : None or 1-D complex array (f*N_occ,)
+               Reference diagonal added to A_offdiag, see above. None (default)
+               means no diagonal term, and the shifts are the full diagonal.
 
     Returns
     -------
@@ -613,6 +627,10 @@ def bl_gmres_shifted_mvp_fft(n, f, address, Au_til, sigmas, B, tol, itermax,
         raise ValueError("itermax must be at least 1")
     if lsq_method not in ("incremental", "dense"):
         raise ValueError('lsq_method must be "incremental" or "dense"')
+    if diag_ref is not None:
+        diag_ref = np.asarray(diag_ref, dtype=np.complex128)
+        if diag_ref.shape != (B.shape[0],):
+            raise ValueError("diag_ref must be a 1-D array with one entry per row of B")
     N_m = sigmas.size
     L = B.shape[1]
     N = B.shape[0]
@@ -673,7 +691,10 @@ def bl_gmres_shifted_mvp_fft(n, f, address, Au_til, sigmas, B, tol, itermax,
             Hbar = Hnew
 
         t1 = time.perf_counter()
-        W = _block_mvp_offdiag(n, f, Au_til, full_idx, Vk)
+        if diag_ref is None:
+            W = _block_mvp_offdiag(n, f, Au_til, full_idx, Vk)
+        else:
+            W = _block_mvp_noprec(n, f, Au_til, full_idx, diag_ref, Vk)
         t2 = time.perf_counter()
         timings['mvp'] += t2 - t1
 

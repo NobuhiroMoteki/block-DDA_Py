@@ -40,6 +40,45 @@ def cr2009_polarizability(m_p, eper_m, element_vol, k):
     return alpha0_E / (1 - M_term * alpha0_E / element_vol)
 
 
+def common_offset_refractive_indices(m_ref_xyz, m_x_list, eper_m):
+    """
+    Principal refractive indices along a common-offset sweep.
+
+    The inverse CR2009 polarizability depends on the refractive index only
+    through tau = 1 / (eper_r - 1), eper_r = m_p**2 / eper_m:
+
+        1/alpha_E = (4 pi / (3 element_vol)) (1 + 3 tau) - M_term / element_vol.
+
+    A sweep that adds the same offset to tau of all three principal axes
+    therefore adds the same offset to all three values of 1/alpha_E. The
+    interaction matrix then changes by a scalar multiple of the identity,
+    which is the condition of the shifted block GMRES. The differences of tau
+    between the axes stay constant along the sweep. The differences of the
+    refractive indices do not.
+
+    Parameters
+    ----------
+    m_ref_xyz : array_like, shape (3,)     complex principal refractive indices at
+                                           the reference point
+    m_x_list  : array_like, shape (N_m,)   refractive index of the x principal axis
+                                           at each sweep point
+    eper_m    : float   medium relative permittivity, m_m**2
+
+    Returns
+    -------
+    m_xyz : complex128 ndarray, shape (N_m, 3)   principal refractive indices at
+            each sweep point; ``m_xyz[:, 0]`` equals ``m_x_list``
+    """
+    m_ref_xyz = np.asarray(m_ref_xyz, dtype=np.complex128)
+    m_x_list = np.asarray(m_x_list, dtype=np.complex128)
+    tau_ref = 1.0 / (m_ref_xyz ** 2 / eper_m - 1.0)                   # shape: (3,)
+    dtau = 1.0 / (m_x_list ** 2 / eper_m - 1.0) - tau_ref[0]          # shape: (N_m,)
+    tau = tau_ref[np.newaxis, :] + dtau[:, np.newaxis]                # shape: (N_m, 3)
+    m_xyz = np.sqrt(eper_m * (1.0 + 1.0 / tau))
+    m_xyz[:, 0] = m_x_list
+    return m_xyz
+
+
 class Target:
 
     def __init__(self, shape_name, lattice_n, lattice_lf, lattice_grid_points, lattice_grid_points_is_in_target, m_p_xyz, r_v_base):
@@ -335,6 +374,8 @@ class DiscreteDipoles(Target, IncidentField):
         self.set_interaction_matrix()
 
         self.m_p_shifted = m_p_list.astype(np.complex128)             # shape: (N_m,)
+        self.m_p_xyz_shifted = None                                   # isotropic sweep
+        self.diag_ref_shifted = None
         alpha_E = cr2009_polarizability(self.m_p_shifted, self.eper_m,
                                         self.element_vol, self.k)
         self.sigmas = 1.0 / alpha_E                                   # shape: (N_m,)
@@ -347,6 +388,83 @@ class DiscreteDipoles(Target, IncidentField):
             warnings.warn("m_p_list contains |m| larger than the refractive index this "
                           "lattice was built for; the effective dpl ({:.2f}) is below the "
                           "lattice dpl ({:.2f})".format(self.dpl_shifted.min(), self.dpl))
+
+
+    def set_interaction_matrix_shifted_offset(self, m_x_list):
+        """
+        Set up a common-offset sweep of a homogeneous anisotropic particle.
+
+        The principal refractive indices ``m_p_xyz`` of this object are the
+        reference point. At sweep point s the x principal axis has the
+        refractive index ``m_x_list[s]``, and tau = 1 / (eper_r - 1) of the
+        other two axes changes by the same amount as tau of the x axis
+        (``common_offset_refractive_indices``). The interaction matrix is then
+
+            A_s = A_ref + sigma_s I,
+            A_ref = diag(1/alpha_E(m_p_xyz)) + A_offdiag,
+            sigma_s = 1/alpha_E(m_x_list[s]) - 1/alpha_E(m_p_xyz[0]),
+
+        so all sweep points are solved by one shifted block-GMRES process on
+        A_ref. For a uniaxial particle ``m_p_xyz = (n_o, n_o, n_e)``,
+        ``m_x_list`` holds the ordinary indices. The birefringence
+        n_e - n_o is NOT constant along such a sweep: the constant quantity is
+        1/(eper_r_e - 1) - 1/(eper_r_o - 1). The indices of every sweep point
+        are returned in ``m_p_xyz_shifted``.
+
+        The caller must build the lattice for the largest |m| of
+        ``m_p_xyz_shifted``. An isotropic ``m_p_xyz`` is allowed and gives the
+        sweep of ``set_interaction_matrix_shifted``.
+
+        Parameters
+        ----------
+        m_x_list : array_like, shape (N_m,)   complex refractive index of the x
+                   principal axis at each sweep point
+
+        Sets
+        ----
+        m_p_xyz_shifted  : ndarray (N_m, 3) complex128   principal refractive indices
+        diag_ref_shifted : ndarray (3N,) complex128      diagonal of A_ref [um^-3]
+        sigmas           : ndarray (N_m,) complex128     offsets sigma_s [um^-3]
+        m_p_shifted      : ndarray (N_m,) complex128     ``m_x_list``
+        dpl_shifted      : ndarray (N_m,) float64        effective dipoles per wavelength
+                           for the largest |m| of each sweep point on this lattice
+
+        Raises
+        ------
+        ValueError
+            If ``m_x_list`` is not a non-empty 1-D sequence of scalars, or if a
+            sweep point has no finite refractive index with positive real part.
+        """
+        m_x_list = np.asarray(m_x_list)
+        if (m_x_list.ndim != 1 or m_x_list.size == 0
+                or not np.issubdtype(m_x_list.dtype, np.number)):
+            raise ValueError("m_x_list must be a non-empty 1-D sequence of scalar "
+                             "refractive indices")
+        m_ref_xyz = np.asarray(self.m_p_xyz, dtype=np.complex128)     # shape: (3,)
+        m_xyz = common_offset_refractive_indices(m_ref_xyz, m_x_list, self.eper_m)
+        if not (np.all(np.isfinite(m_xyz)) and np.all(m_xyz.real > 0)):
+            raise ValueError("the common-offset sweep leaves the range of physical "
+                             "refractive indices; move the reference m_p_xyz or "
+                             "narrow m_x_list")
+
+        # Au_til, e_inc_phase, E_inc, B and the reference diagonal diag_A.
+        self.set_interaction_matrix()
+
+        self.m_p_xyz_shifted = m_xyz                                  # shape: (N_m, 3)
+        self.m_p_shifted = m_xyz[:, 0].copy()                         # shape: (N_m,)
+        self.diag_ref_shifted = self.diag_A.copy()                    # shape: (3N,)
+        self.sigmas = (
+            1.0 / cr2009_polarizability(self.m_p_shifted, self.eper_m, self.element_vol, self.k)
+            - 1.0 / cr2009_polarizability(m_ref_xyz[0], self.eper_m, self.element_vol, self.k))
+        self.dpl_shifted = (self.wl_0 / np.abs(m_xyz).max(axis=1)) / self.lattice_lf
+
+        print("Common-offset sweep: N_m= {:}, effective dpl from {:.2f} to {:.2f}".format(
+            m_x_list.size, self.dpl_shifted.min(), self.dpl_shifted.max()))
+        if self.dpl_shifted.min() < self.dpl * (1 - 1e-6):
+            warnings.warn("the sweep contains |m| larger than the reference m_p_xyz; "
+                          "the effective dpl ({:.2f}) is below the dpl of the reference "
+                          "({:.2f}). Check that the lattice was built for the largest "
+                          "|m| of m_p_xyz_shifted".format(self.dpl_shifted.min(), self.dpl))
 
 
     def _shifted_projection_operators(self):
@@ -383,8 +501,9 @@ class DiscreteDipoles(Target, IncidentField):
 
     def solve_matrix_equation_shifted(self, return_X=False, lsq_method="incremental"):
         """
-        Solve all refractive indices of ``set_interaction_matrix_shifted`` with
-        one shifted block-GMRES process (``bl_gmres_shifted_mvp_fft``).
+        Solve all refractive indices of ``set_interaction_matrix_shifted`` or
+        ``set_interaction_matrix_shifted_offset`` with one shifted block-GMRES
+        process (``bl_gmres_shifted_mvp_fft``).
 
         Uses ``self.tol`` and ``self.itermax`` like ``solve_matrix_equation``.
         The stopping test is applied to each refractive index separately.
@@ -392,7 +511,9 @@ class DiscreteDipoles(Target, IncidentField):
         Parameters
         ----------
         return_X : bool   also keep the full solutions (``shifted_result.X_list``,
-                          each of shape (3N, L)). Not needed for the observables.
+                          each of shape (3N, L)). Not needed for the observables,
+                          except for ``C_abs`` of an absorbing anisotropic particle.
+                          The solutions are kept automatically in that case.
         lsq_method : str  "incremental" (default) or "dense"; how the per-shift
                           least-squares problems are handled, see
                           ``bl_gmres_shifted_mvp_fft``. Both give the same result
@@ -406,11 +527,18 @@ class DiscreteDipoles(Target, IncidentField):
         start_time = time.time()
         print("Starting shifted block-GMRES iterative solver...")
 
+        # C_abs of an anisotropic particle weights the three components of the
+        # polarization differently, so it needs the solutions themselves.
+        if self.m_p_xyz_shifted is not None and np.any(
+                np.mean((self.m_p_xyz_shifted ** 2 / self.eper_m).imag, axis=1) >= 1e-12):
+            return_X = True
+
         F = self._shifted_projection_operators()
         self.shifted_result = bl_gmres_shifted_mvp_fft(
             self.lattice_n, self.f, self.lattice_address_in_target,
             self.Au_til, self.sigmas, self.B, self.tol, self.itermax,
-            proj_ops=F, return_X=return_X, lsq_method=lsq_method)
+            proj_ops=F, return_X=return_X, lsq_method=lsq_method,
+            diag_ref=self.diag_ref_shifted)
         del F
 
         res = self.shifted_result
@@ -439,6 +567,12 @@ class DiscreteDipoles(Target, IncidentField):
         ``C_abs`` is set to zero for Im(eper_r) < 1e-12, as in ``compute_C_abs``.
         Refractive indices that did not converge are returned as NaN.
 
+        For a common-offset sweep of an anisotropic particle
+        (``set_interaction_matrix_shifted_offset``) c_E differs between the
+        three components. ``C_abs`` is then evaluated from the assembled
+        solution with the formula of ``compute_C_abs``, and it is zero when the
+        mean of Im(eper_r) over the components is below 1e-12.
+
         Returns
         -------
         dict of ndarray, each of shape (N_m, L):
@@ -461,7 +595,16 @@ class DiscreteDipoles(Target, IncidentField):
             kL = Y.shape[0]
             C_ext[s] = 4 * np.pi * self.k * np.imag(
                 np.einsum('jl,jl->l', res.Lambda.conj(), Y[:L, :]))
-            if eper_r[s].imag >= 1e-12:
+            if self.m_p_xyz_shifted is not None:
+                eper_r_xyz = self.m_p_xyz_shifted[s] ** 2 / self.eper_m   # shape: (3,)
+                if np.mean(eper_r_xyz.imag) >= 1e-12:
+                    P = res.X_list[s].T.reshape(L, self.num_element_occupy, 3)
+                    E = P * (4 * np.pi) / ((eper_r_xyz - 1) * self.element_vol)
+                    C_abs[s] = 4 * np.pi * self.k * np.sum(
+                        np.imag(P * np.conj(E)), axis=(1, 2))
+                else:
+                    C_abs[s] = 0.0
+            elif eper_r[s].imag >= 1e-12:
                 c_E = 4 * np.pi / ((eper_r[s] - 1) * self.element_vol)
                 C_abs[s] = (4 * np.pi * self.k * np.imag(np.conj(c_E))
                             * np.sum(np.abs(Y) ** 2, axis=0))

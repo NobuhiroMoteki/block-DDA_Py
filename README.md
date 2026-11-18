@@ -286,6 +286,7 @@ Spheroid mode reduces both peak memory and computation time by a factor of **1/4
 - v0.8.0: `run_dda_spheroid_sweep.py --shifted-ri`: the `RI_real` axis is solved in one process per slot; the default mode is unchanged
 - v0.8.0: `tests/`: pytest suite comparing the shifted path with the existing solver and with Mie theory
 - v0.8.1: The per-shift least-squares problems are handled by an incremental block-Givens QR (`lsq_method="incremental"`, default). The dense method of v0.8.0 is kept as `lsq_method="dense"`. At 64 orientations the incremental method cuts the least-squares time by a factor of 2.3 to 6.8. The results of the shifted sweep change at rounding level only
+- `DiscreteDipoles.set_interaction_matrix_shifted_offset`: common-offset sweep of a homogeneous anisotropic particle with the shifted block GMRES. The inverse polarizabilities of the three principal axes change by the same amount along the sweep. The birefringence `n_e - n_o` is not constant along such a sweep (Sec. 5.5 of `docs/theory_note.pdf`). The sweep driver does not use it: `--delta-n-eff` keeps `n_e - n_o` fixed and solves each refractive index separately
 
 ### Environment
 - **Python**: 3.12 (Windows) → **3.13 (Linux/WSL2)**

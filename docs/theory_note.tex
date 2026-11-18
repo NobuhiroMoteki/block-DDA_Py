@@ -982,6 +982,117 @@ It holds for the existing solver as well and is used as a consistency
 check.
 
 %----------------------------------------------------------------------
+\subsection{Common-offset sweep of an anisotropic particle}
+\label{sec:shift-offset}
+%----------------------------------------------------------------------
+
+The diagonal of $\mathbf{A}$ of an anisotropic particle holds three
+different values $1/\alpha_c$ (Sec.~\ref{sec:polarisability}).
+A change of the refractive indices then changes $\mathbf{A}$ by a
+diagonal matrix that is in general not a scalar multiple of the
+identity.
+One family of sweeps keeps the shift structure.
+Equations~\eqref{eq:cm-polarisability} and \eqref{eq:rr-polarisability}
+give
+\begin{equation}
+  \frac{1}{\alpha_c}
+    = \frac{4\pi}{3v}\,\bigl(1 + 3\,\tau_c\bigr) - \frac{M}{v},
+  \qquad
+  \tau_c = \frac{1}{\epsilon_{r,c} - 1} .
+  \label{eq:inv-alpha-tau}
+\end{equation}
+The inverse polarisability depends on the refractive index only
+through $\tau_c$ and is linear in it.
+Let $\tau_c^{\text{ref}}$ be the values at a reference point with the
+principal refractive indices $m_{p,c}^{\text{ref}}$.
+A sweep that adds the same offset to all three axes,
+\begin{equation}
+  \tau_c^{(s)} = \tau_c^{\text{ref}} + \Delta\tau_s ,
+  \qquad c \in \{x, y, z\},
+  \label{eq:common-offset}
+\end{equation}
+gives the family
+\begin{equation}
+  \mathbf{A}_s = \mathbf{A}_{\text{ref}} + \sigma_s\,\mathbf{I},
+  \qquad
+  \sigma_s = \frac{4\pi}{v}\,\Delta\tau_s,
+  \qquad
+  \mathbf{A}_{\text{ref}}
+    = \operatorname{diag}\bigl(1/\alpha_c^{\text{ref}}\bigr)
+      + \mathbf{A}_{\text{off}} .
+  \label{eq:offset-family}
+\end{equation}
+The block Arnoldi process is applied to $\mathbf{A}_{\text{ref}}$
+instead of $\mathbf{A}_{\text{off}}$.
+Sections~\ref{sec:shift-arnoldi} and~\ref{sec:shift-iterate} then hold
+without change.
+The principal refractive indices at sweep point $s$ are
+\begin{equation}
+  m_{p,c}^{(s)} = m_m \sqrt{1 + \frac{1}{\tau_c^{(s)}}} .
+  \label{eq:offset-indices}
+\end{equation}
+The sweep is parametrised by the refractive index of the $x$ axis.
+For a uniaxial particle with $m_p = (n_o, n_o, n_e)$ this is the
+ordinary index $n_o$.
+
+The quantity that stays constant along the sweep is
+$\tau_e - \tau_o$.
+The birefringence $n_e - n_o$ is not constant.
+It grows with the index contrast and vanishes where $n_o$ approaches
+$m_m$.
+Table~\ref{tab:offset-birefringence} shows an example.
+A sweep at fixed $n_e - n_o$ does not have the form
+\eqref{eq:offset-family} and needs one solve per refractive index.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Birefringence $n_e - n_o$ along a common-offset sweep whose
+           reference point is $n_o = 1.50$, $n_e = 1.55$.}
+  \label{tab:offset-birefringence}
+  \begin{tabular}{lrrrrr}
+    \toprule
+    $n_o$ & 1.35 & 1.40 & 1.50 & 1.60 & 1.70 \\
+    \midrule
+    Air ($m_m = 1$)        & 0.023  & 0.031  & 0.050 & 0.075 & 0.106 \\
+    Water ($m_m = 1.3345$) & 0.0003 & 0.0066 & 0.050 & 0.159 & 0.403 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The method \texttt{set\_interaction\_matrix\_shifted\_offset} of the
+scatterer class sets up the sweep.
+The reference point is the \texttt{m\_p\_xyz} of the object, and the
+method returns the indices \eqref{eq:offset-indices} of every sweep
+point.
+The solver receives the diagonal of $\mathbf{A}_{\text{ref}}$ through
+the argument \texttt{diag\_ref} of
+\texttt{bl\_gmres\_\allowbreak shifted\_\allowbreak mvp\_fft}.
+The lattice must be built for the largest $|m_{p,c}^{(s)}|$ of the
+sweep.
+
+The extinction cross section and the scattering amplitudes are
+obtained from $\mathbf{Y}_s$ as in Sec.~\ref{sec:shift-observables}.
+The absorption cross section \eqref{eq:C-abs-shifted} is not, because
+its prefactor differs between the three axes.
+For an absorbing anisotropic particle the solutions $\mathbf{X}_s$ are
+assembled and $C_{\text{abs}}$ is evaluated as in
+Sec.~\ref{sec:observables}.
+
+The tests compare the sweep with independent solves of the existing
+anisotropic path on the same lattice.
+The case is the spheroid of Sec.~\ref{sec:shift-verification} with the
+reference $m_p = (1.60, 1.60, 1.68)$ and the ordinary indices
+$n_o = 1.40$, $1.50$, $1.60$ and $1.50 + 0.05i$.
+The step counts are identical ($4, 5, 6, 5$ at $\text{tol} = 10^{-2}$
+and $9, 11, 12, 11$ at $\text{tol} = 10^{-5}$).
+The solutions differ by at most \num{7.1e-16} and the observables by at
+most \num{3.4e-15} in relative terms.
+
+The sweep driver does not use the common-offset sweep.
+Its option \texttt{--delta-n-eff} keeps $n_e - n_o$ fixed along the
+$n_{\mathrm{real}}$ axis and solves each refractive index separately.
+
+%----------------------------------------------------------------------
 \subsection{Cost and memory}
 \label{sec:shift-cost}
 %----------------------------------------------------------------------

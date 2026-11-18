@@ -1175,6 +1175,72 @@ $D_{ve} = \SI{0.6}{\micro\meter}$ and up to \SI{3.8}{\gibi\byte} for
 $D_{ve} = \SI{1.0}{\micro\meter}$.
 It exceeds that of methods A and B by less than \SI{5}{\percent}.
 
+\paragraph{Other numbers of orientations.}
+Methods B and C were also timed with $L = 5$ and $L = 64$ on the same
+machine.
+Table~\ref{tab:shift-benchmark-L} lists the results.
+The number of steps of every refractive index again equals that of
+method~B in all runs.
+The forward scattering amplitudes differ by at most \num{1.2e-14} in
+relative terms.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Solver speed-up $S_{\text{solve}}$ of the shifted block GMRES
+           for $L = 5$ and $L = 64$.
+           The particle and the refractive indices are those of
+           Table~\ref{tab:shift-benchmark}.
+           LSQ is the share of the least-squares problems in the solver
+           time of method~C.}
+  \label{tab:shift-benchmark-L}
+  \begin{tabular}{lrlcrrrrrr}
+    \toprule
+    & & & & \multicolumn{3}{c}{$N_m = 15$}
+          & \multicolumn{3}{c}{$N_m = 30$} \\
+    \cmidrule(lr){5-7} \cmidrule(lr){8-10}
+    $D_{ve}$ (\si{\micro\meter}) & $L$ & tol & $n_s$
+      & $\frac{\sum_s n_s}{\max_s n_s}$ & $S_{\text{solve}}$
+      & LSQ (\si{\percent})
+      & $\frac{\sum_s n_s}{\max_s n_s}$ & $S_{\text{solve}}$
+      & LSQ (\si{\percent}) \\
+    \midrule
+    0.6 &  5 & $10^{-2}$ & 6--12  & 10.8 &  9.6 &  0.8 & 21.7 & 18.1 &  1.7 \\
+    0.6 &  5 & $10^{-5}$ & 12--23 & 11.0 &  9.4 &  1.2 & 22.1 & 18.9 &  2.2 \\
+    0.6 & 64 & $10^{-2}$ & 5--8   & 11.6 & 10.3 &  6.1 & 23.2 & 19.1 & 11.1 \\
+    0.6 & 64 & $10^{-5}$ & 9--14  & 12.5 &  9.7 & 12.8 & 25.1 & 17.3 & 22.5 \\
+    1.0 &  5 & $10^{-2}$ & 10--31 &  9.4 &  8.5 &  0.4 & 18.7 & 16.4 &  0.7 \\
+    1.0 &  5 & $10^{-5}$ & 22--58 &  9.7 &  8.1 &  1.0 & 19.4 & 16.3 &  1.9 \\
+    1.0 & 64 & $10^{-2}$ & 6--11  & 11.6 & 10.5 &  2.1 & 23.2 & 20.5 &  4.0 \\
+    1.0 & 64 & $10^{-5}$ & 11--19 & 11.9 & 10.5 &  4.7 & 23.9 & 20.1 &  8.9 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The solver speed-up for $N_m = 15$ lies between $8.1$ and $10.5$ for
+all three values of $L$.
+The share of the least-squares problems grows with $L$, because the
+matrix of \eqref{eq:shifted-lsq} has $(n+1)L$ rows.
+It is at most \SI{2.2}{\percent} for $L = 5$.
+For $L = 64$ and $N_m = 30$ it reaches \SI{22.5}{\percent} at
+$D_{ve} = \SI{0.6}{\micro\meter}$ and \SI{8.9}{\percent} at
+$D_{ve} = \SI{1.0}{\micro\meter}$.
+The cost of the least-squares problems does not depend on $N$, so their
+share decreases with the particle size.
+The implementation solves each least-squares problem from scratch at
+every step.
+An incremental QR factorisation per shift, as in
+Sec.~\ref{sec:block-gmres}, is not implemented.
+
+The share of the Gram--Schmidt process also grows with $L$.
+One block inner product costs $O(N L^2)$ operations, whereas the block
+matrix--vector product scales linearly with $L$.
+For $D_{ve} = \SI{1.0}{\micro\meter}$ and $L = 64$ the Gram--Schmidt
+process takes about \SI{42}{\percent} of the shifted solve time
+after 11 steps and about \SI{48}{\percent} after 19 steps.
+The peak resident memory of method~C for this particle and $L = 64$ is
+\SI{13.3}{\gibi\byte}, which exceeds that of method~B by
+\SI{5}{\percent}.
+
 %======================================================================
 \section{Computational Performance: Old vs.\ New Implementation}
 \label{sec:performance}

@@ -93,7 +93,30 @@ uv pip install -r requirements.txt
    - Orientation grid divisions: `N_alpha_ori`, `N_beta_ori`, `N_gamma_ori`
 2. Execute `test_dda.ipynb`. DDA results are compared to the Mie reference.
 
-### Parameter sweep
+### Sweeping refractive index, volume, shape and orientation
+
+There are three ways to sweep the parameters. Choose by the particle shape and by the size of the sweep.
+
+| | General sweep | Spheroid sweep | Direct use of the API |
+|---|---|---|---|
+| Entry point | `dda_results/create_h5py.ipynb` + `run_dda.py` | `run_dda_spheroid_sweep.py` | your own script |
+| Particle shape | any GRE shape, isotropic or anisotropic | spheroids only | any GRE shape |
+| Refractive index | list `m_p_xyz_list`, one solve per entry | regular grid `RI_REAL_RANGE`; one solve per value, or one solve for the whole axis with `--shifted-ri` | list of isotropic values, one solve for the whole list |
+| Volume | list `r_v_base_list` (volume-equivalent radius) | grid `D_VE_RANGE` (volume-equivalent diameter, log-spaced) | one lattice per size |
+| Shape parameters | lists `bc_ratio_list`, `ab_ratio_list`, `gre_beta_list` | grid `LOG10_AR_RANGE` (aspect ratio `b/c`) | one lattice per shape |
+| Orientation | Euler-angle grid `N_alpha_ori` × `N_beta_ori` × `N_gamma_ori` | grid in `cos(theta_o)` and `phi_o` | any list of Euler angles |
+| Output | HDF5, all observables | HDF5 lookup table, forward amplitudes only | arrays in memory |
+
+How each parameter is handled:
+
+- **Orientation** is never looped. All orientations of one particle are right-hand sides of one block-Krylov solve. For spheroids only the polar angle is solved, and the other two Euler angles are filled in analytically (spheroid mode).
+- **Refractive index** needs a new solve per value, except for a homogeneous isotropic particle. There the shifted block GMRES solves all values in one process on a common lattice. It is available as `--shifted-ri` in the spheroid sweep and through the API. `run_dda.py` does not use it. Birefringent particles are always solved one refractive index at a time.
+- **Volume and shape** change the lattice. Every combination is a separate lattice and a separate solve.
+- **Wavelength and medium** are given as `(wl_0, m_m)` pairs in both drivers. Each pair is a separate set of solves.
+
+The three ways are described below.
+
+### Parameter sweep (general shapes)
 1. Open `dda_results/create_h5py.ipynb` and configure the sweep parameters:
    - List of (vacuum wavelength, medium RI) pairs: `wl_m_m_pairs` — shape `(N_pairs, 2)`
    - List of particle refractive indices (supports anisotropic x/y/z): `m_p_xyz_list` — shape `(N_mp, 3)`
@@ -103,7 +126,7 @@ uv pip install -r requirements.txt
    - Orientation grid divisions: `N_alpha_ori`, `N_beta_ori`, `N_gamma_ori`
    - Output filename: `OUTPUT_FILE` in `run_dda.py`
 2. Execute `dda_results/create_h5py.ipynb` to generate the HDF5 output file.
-3. Execute `run_dda.py`. The sweep loops over all combinations of `wl_m_m_pairs`, `m_p_xyz_list`, and shape parameters. For spheroids (`ab_ratio=1`, `gre_beta=0`), spheroid mode is activated automatically: only `N_beta` DDA solves are performed, and the full orientation grid is filled analytically.
+3. Execute `run_dda.py`. The sweep loops over all combinations of `wl_m_m_pairs`, `m_p_xyz_list`, `r_v_base_list` and the shape parameters. Each combination is one block solve for all orientations. For spheroids (`ab_ratio=1`, `gre_beta=0`), spheroid mode is activated automatically: only `N_beta` DDA solves are performed, and the full orientation grid is filled analytically.
 4. Use `dda_results/check_h5py.ipynb` to inspect the HDF5 file contents and verify results.
 5. Use `plot_dda_results.ipynb` to visualize the parameter-swept DDA results.
 
@@ -111,18 +134,22 @@ uv pip install -r requirements.txt
 
 For dedicated spheroid sweeps over a regular grid of physical parameters, use `run_dda_spheroid_sweep.py`.
 
-1. Edit the settings section at the top of the script:
-   - `MEDIUM_CONDITIONS`: list of `(wavelength [um], n_medium)` pairs — each pair produces its own HDF5 group
-   - `D_VE_RANGE`, `RI_REAL_RANGE`, `LOG10_AR_RANGE`: each `(min, max, N_grid)` — equidistant grids over volume-equivalent diameter, real refractive index, and log10(aspect ratio)
+1. Choose a preset and, if needed, edit the settings section at the top of the script:
+   - `--preset` selects the host medium, the wavelengths and the output file: `air` (default; 453, 638 and 834 nm), `liquid` (water; 637 and 773 nm), `liquid512` (water; 512 nm) or `liquid_prolate` (water; prolate spheroids in a narrow refractive-index band). Each preset sets `MEDIUM_CONDITIONS`, the list of `(wavelength [um], n_medium)` pairs. Each pair produces its own HDF5 group.
+   - `D_VE_RANGE`, `RI_REAL_RANGE`, `LOG10_AR_RANGE`: each `(min, max, N_grid)`. The volume-equivalent diameter [um] is equidistant in log10. The real refractive index and log10(aspect ratio) are equidistant.
+   - `M_IMAG`: imaginary part of the particle refractive index, the same for all grid points (default 0).
    - `N_COS_THETA_O_HALF`, `N_PHI_O`: orientation grid sizes on the reduced domain (`cos(theta_o)` in [0, 1], `phi_o` in [0, pi])
+   - `--output PATH` overrides the output file of the preset.
+   - `--delta-n-eff DN` makes the spheroid uniaxial with the optic axis along the symmetry axis and the birefringence `n_e - n_o = DN`. The mean index `(2 n_o + n_e)/3` stays on the `RI_real` axis.
 
 2. Execute the script:
 
    ```sh
-   python run_dda_spheroid_sweep.py
+   python run_dda_spheroid_sweep.py                    # preset air
+   python run_dda_spheroid_sweep.py --preset liquid    # water host
    ```
 
-   The script creates the HDF5 file `dda_results/dda_results_spheroid_sweep.h5` (if not existing) and runs the sweep. Intermediate results are written per condition, so the run can be interrupted and resumed.
+   The script creates the HDF5 file of the preset (`dda_results/dda_results_spheroid_sweep.h5` for `air`) if it does not exist and runs the sweep. Intermediate results are written per condition, so the run can be interrupted and resumed.
 
    **Shifted refractive-index sweep (`--shifted-ri`).** For a homogeneous isotropic particle, changing the refractive index only adds a scalar multiple of the identity to the interaction matrix. With this flag all `RI_real` values of a `(wavelength, D_ve, AR)` slot are solved by one shifted block-GMRES process instead of one solve per value:
 
@@ -140,12 +167,44 @@ For dedicated spheroid sweeps over a regular grid of physical parameters, use `r
 
 **Output HDF5 structure** (`dda_results/dda_results_spheroid_sweep.h5`):
 
-- Shared grid axes (root): `D_ve_grid`, `RI_real_grid`, `log_AR_grid`, `cos_theta_o_half_grid`, `phi_o_grid`
+- Shared grid axes (root): `log_D_ve_grid` (log10 of the volume-equivalent diameter in um), `RI_real_grid`, `log_AR_grid`, `cos_theta_o_half_grid`, `phi_o_grid`
 - Per-wavelength groups (e.g. `wl_0p453/`, `wl_0p638/`, `wl_0p834/`):
   - Forward scattering amplitudes (5D, float64): `S_fw_theta_re`, `S_fw_theta_im`, `S_fw_phi_re`, `S_fw_phi_im` — shape `(N_Dve, N_RI, N_AR, N_u_half, N_ph)`
   - Convergence flag: `converged` — shape `(N_Dve, N_RI, N_AR)`, bool
   - Group attribute `wl_0` stores the exact wavelength value
 - Symmetry operations (cos_theta_o mirror to [-1,1], phi_o extension to [0,2pi]) are handled by the downstream consumer, not by block-DDA_Py
+
+### Refractive-index sweep of any isotropic particle through the API
+
+The shifted block GMRES is not limited to spheroids. For any homogeneous isotropic GRE particle, build the lattice for the largest `|m|` of the sweep and pass the list of refractive indices:
+
+```python
+import numpy as np
+from shape_model.gaussian_ellipsoid import gaussian_ellipsoid_shape_model
+from bl_dda.scatterer import Target, IncidentField, DiscreteDipoles
+
+wl_0, m_m = 0.638, 1.0                        # vacuum wavelength [um], medium index
+r_v_base, bc_ratio, ab_ratio, beta = 0.2, 1.5, 1.2, 0.1
+m_list = np.linspace(1.35, 1.70, 8) + 0j      # refractive indices of the sweep
+m_max = m_list[np.argmax(np.abs(m_list))]
+m_p_xyz = np.array([m_max, m_max, m_max])     # the lattice is built for the largest |m|
+
+rng = np.random.default_rng(12345)
+gre = gaussian_ellipsoid_shape_model(r_v_base, bc_ratio, ab_ratio, beta, wl_0, m_p_xyz)
+r_pts, _ = gre.compute_r_points_on_GRE(rng)
+_, lattice_n, grid = gre.create_cuboid_lattice_that_encloses_GRE_shape(r_pts)
+dist = gre.find_nearest_distance_from_the_GRE_surf(grid, r_pts)
+is_in = gre.extract_lattice_address_in_GRE_volume(gre.lattice_lf, gre.distance_factor, lattice_n, dist)
+target = Target(gre.name, lattice_n, gre.lattice_lf, grid, is_in, m_p_xyz, r_v_base)
+
+euler = np.array([[0.0, 0.5, 0.0], [1.0, 1.2, 0.3]])   # (L, 3) Euler angles [rad]
+dd = DiscreteDipoles(target, IncidentField(wl_0, m_m, euler))
+dd.set_interaction_matrix_shifted(m_list)
+dd.solve_matrix_equation_shifted()
+obs = dd.compute_observables_shifted()        # dict of arrays of shape (N_m, L)
+```
+
+`obs` holds `C_ext`, `C_abs`, `S_fw_PCAS_theta`, `S_fw_PCAS_phi` and `S_bk_OCBS` for every refractive index and orientation. `dd.converge_shifted` tells which refractive indices converged within `dd.tol` (default 1e-2) and `dd.itermax` (default 25). Loop over volume and shape in your own script, with one lattice per combination.
 
 ---
 

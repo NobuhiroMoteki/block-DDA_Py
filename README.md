@@ -3,7 +3,7 @@
 ## 📌 Description
 A Python code for the Discrete Dipole Approximation (DDA) using block-Krylov type iterative solvers, with custom features for light-scattering simulations of environmental particles (e.g., mineral dust).
 
-**Version used in the published paper.** The DDA results of Moteki (2026), *J. Quant. Spectrosc. Radiat. Transfer* 362, 110046, were produced with [v0.7.8](https://github.com/NobuhiroMoteki/block-DDA_Py/releases/tag/v0.7.8). Use that release to reproduce the paper. Later versions add the shifted refractive-index sweep (v0.8.0 to v0.8.3) and follow the corrected definition of the backward-scattering amplitude *S*<sub>bak</sub> (from v0.8.2). The corrected *S*<sub>bak</sub> is 1/√2 times that of v0.7.8. All other results are unchanged in the default mode.
+**Version used in the published paper.** The DDA results of Moteki (2026), *J. Quant. Spectrosc. Radiat. Transfer* 362, 110046, were produced with [v0.7.8](https://github.com/NobuhiroMoteki/block-DDA_Py/releases/tag/v0.7.8). Use that release to reproduce the paper. Later versions add the shifted refractive-index sweep (v0.8.0 to v0.8.3) and follow the corrected definition of the backward-scattering amplitude *S*<sub>bak</sub> (from v0.8.2). The corrected *S*<sub>bak</sub> is 1/√2 times that of v0.7.8. The solver, the cross sections and the forward-scattering amplitudes are the same as in v0.7.8 when the shifted sweep is not used.
 
 ### Main Features
 1. Supports batch calculations for many particle orientations using a **deterministic uniform Euler angle grid** on SO(3): `N_alpha` × `N_beta` × `N_gamma` divisions, with equal-area polar sampling (`cos(beta)` equally spaced).

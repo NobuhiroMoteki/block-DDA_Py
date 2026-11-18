@@ -180,7 +180,7 @@ Batch rotation is performed using \texttt{scipy.spatial.transform.Rotation}.
 Following the CAS-v2 (Complex Amplitude Sensing, version~2) beam
 configuration, the incident polarisation is assumed to be left-handed
 circular.
-This setting is hard-coded in the current version (v0.6.0).
+This setting is hard-coded in the current version.
 The polarisation vector is:
 \begin{equation}
   \hat{\bm{e}}_0
@@ -1142,7 +1142,7 @@ Table~\ref{tab:shift-verification} lists the results.
     $C_{\text{ext}}$, $C_{\text{abs}}$,
       $S_{\text{fw}}^{\text{PCAS}}$, $S_{\text{bk}}^{\text{OCBS}}$
       from \eqref{eq:C-ext-shifted}--\eqref{eq:C-abs-shifted}
-      & below \num{7e-15} \\
+      & below \num{8e-15} \\
     Optical theorem \eqref{eq:optical-theorem}
       & below \num{1e-12} \\
     Sweep output with \texttt{--shifted-ri}
@@ -1716,7 +1716,7 @@ the base ellipsoid with covariance
 where $\beta$ is the standard deviation of the deformation and
 $\ell_c$ is the correlation length, which controls the fineness of
 the surface roughness.
-In the current version (v0.6.0), $\ell_c = 0.3\,c$ is adopted as an
+In the current version, $\ell_c = 0.3\,c$ is adopted as an
 empirical choice.
 
 The deformed surface position is obtained by displacing each point

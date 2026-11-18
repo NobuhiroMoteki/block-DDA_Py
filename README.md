@@ -1,4 +1,4 @@
-# block-DDA_Py  [![version](https://img.shields.io/badge/version-v0.7.8-blue)](https://github.com/NobuhiroMoteki/block-DDA_Py/releases)
+# block-DDA_Py  [![version](https://img.shields.io/badge/version-v0.8.1-blue)](https://github.com/NobuhiroMoteki/block-DDA_Py/releases)
 
 ## 📌 Description
 A Python code for the Discrete Dipole Approximation (DDA) using block-Krylov type iterative solvers, with custom features for light-scattering simulations of environmental particles (e.g., mineral dust).
@@ -7,11 +7,12 @@ A Python code for the Discrete Dipole Approximation (DDA) using block-Krylov typ
 1. Supports batch calculations for many particle orientations using a **deterministic uniform Euler angle grid** on SO(3): `N_alpha` × `N_beta` × `N_gamma` divisions, with equal-area polar sampling (`cos(beta)` equally spaced).
 2. Supports birefringent particle materials (anisotropic complex refractive index along x, y, z axes).
 3. Supports a parametric irregular shape model suitable for mineral dust particles: Gaussian Random Ellipsoid ([GRE](https://doi.org/10.1016/j.jqsrt.2011.02.013)).
-4. The lattice spacing is set directly from the user-specified **dpl** (dipoles per wavelength inside the particle): `d = λ₀ / (max|m_p| × dpl)`. The default is `dpl=17`. After discretisation, the lattice is rescaled so that the volume-equivalent radius matches `r_v_base` exactly (**volume-preserving lattice rescaling**; see [docs/theory_note.pdf](docs/theory_note.pdf), Sec. 6.2–6.3).
+4. The lattice spacing is set directly from the user-specified **dpl** (dipoles per wavelength inside the particle): `d = λ₀ / (max|m_p| × dpl)`. The default is `dpl=17`. After discretisation, the lattice is rescaled so that the volume-equivalent radius matches `r_v_base` exactly (**volume-preserving lattice rescaling**; see [docs/theory_note.pdf](docs/theory_note.pdf), Sec. 8.3–8.4).
 5. Supports simulation of the key quantities in the Complex Amplitude Sensing version 2 ([CAS-v2](https://doi.org/10.1364/OE.533776)): the polarized complex forward-scattering amplitudes {Re*S*(0°)<sub>*s*</sub>, Im*S*(0°)<sub>*s*</sub>, Re*S*(0°)<sub>*p*</sub>, Im*S*(0°)<sub>*p*</sub>} and the complex backward-scattering amplitude *S*<sub>bak</sub>.
 6. For reference, block-DDA_Py outputs a comparison of the DDA solution to the Mie solution for a volume-equivalent sphere with axes-average refractive index.
 7. Supports parameter sweeps over vacuum wavelength, medium refractive index, particle refractive index (including anisotropic cases), and shape parameters, with results stored in HDF5 format.
-8. **Spheroid mode**: For spheroids (`ab_ratio=1`, `beta=0`), the azimuthal orientation average is computed analytically from a single DDA solve per polar angle, reducing the required number of solves from $N_\theta \times N_\phi$ to $N_\theta$ (see [docs/theory_note.pdf](docs/theory_note.pdf), Sec. 8). While the T-matrix method is generally faster for spheroids, it becomes numerically unstable at extreme aspect ratios; DDA with spheroid mode provides a stable alternative in such regimes.
+8. **Spheroid mode**: For spheroids (`ab_ratio=1`, `beta=0`), the azimuthal orientation average is computed analytically from a single DDA solve per polar angle, reducing the required number of solves from $N_\theta \times N_\phi$ to $N_\theta$ (see [docs/theory_note.pdf](docs/theory_note.pdf), Sec. 9). While the T-matrix method is generally faster for spheroids, it becomes numerically unstable at extreme aspect ratios; DDA with spheroid mode provides a stable alternative in such regimes.
+9. **Shifted refractive-index sweep**: For a homogeneous isotropic particle, all refractive indices of a sweep are solved by one shifted block-GMRES process on a common lattice. The cost is close to that of the single hardest refractive index (see [docs/theory_note.pdf](docs/theory_note.pdf), Sec. 5).
 
 ### Algorithms
 1. block-DDA_Py uses [block-Krylov methods](https://people.math.ethz.ch/~mhg/pub/delhipap.pdf) for iteratively solving the matrix equation, enabling batch computation for many incident beams simultaneously.
@@ -133,7 +134,7 @@ For dedicated spheroid sweeps over a regular grid of physical parameters, use `r
    - Use the flag for new output files only. A file keeps the mode it was created with, and resuming it in the other mode is refused.
    - The flag cannot be combined with a nonzero `--delta-n-eff`. The shifted solve needs the inverse polarizabilities of all axes to change by the same amount, and a sweep at fixed birefringence does not have this property (Sec. 5.5 of `docs/theory_note.pdf`). Birefringent particles are solved one refractive index at a time.
    - The HDF5 layout is unchanged. The root attributes `shifted_ri` and `lattice_policy` and the provenance `config_hash` mark a file made in this mode.
-   - Measured gain over the default mode for an oblate spheroid (`b/c = 2`, `D_ve` = 0.6 and 1.0 µm, 13 orientations, `RI_real` from 1.35 to 1.70): the total time drops by a factor of 7.7 to 9.0 with 15 `RI_real` values and by a factor of 15.1 to 17.8 with 30 values. The time of a slot hardly depends on the number of `RI_real` values. The benchmark is `scripts/run_shift_scaling.py`, and the details are in Sec. 5.8 of `docs/theory_note.pdf`.
+   - Measured gain over the default mode for an oblate spheroid (`b/c = 2`, `D_ve` = 0.6 and 1.0 µm, 13 orientations, `RI_real` from 1.35 to 1.70): the total time drops by a factor of 7.7 to 9.0 with 15 `RI_real` values and by a factor of 15.1 to 17.8 with 30 values. The time of a slot hardly depends on the number of `RI_real` values. The benchmark is `scripts/run_shift_scaling.py`, and the details are in Sec. 5.9 of `docs/theory_note.pdf`.
 
 3. See `read_spheroid_sweep.ipynb` for how to browse the file overview and retrieve results interactively.
 
@@ -150,7 +151,7 @@ For dedicated spheroid sweeps over a regular grid of physical parameters, use `r
 
 ## ⚡ Performance
 
-For a detailed comparison of computational cost between the old (Barrowes + ray) and new (Goodman + NumPy broadcasting) implementations, see [docs/theory_note.pdf](docs/theory_note.pdf), Sec. 5.
+For a detailed comparison of computational cost between the old (Barrowes + ray) and new (Goodman + NumPy broadcasting) implementations, see [docs/theory_note.pdf](docs/theory_note.pdf), Sec. 6.
 
 ### Multi-core CPU parallelism
 

@@ -450,7 +450,7 @@ def _provenance_attrs():
 
     return {
         "producer_repo":    "block-DDA_Py",
-        "producer_version": "0.8.0",
+        "producer_version": "0.8.1",
         "git_sha":          _git("rev-parse", "HEAD"),
         # tracked-file changes only; untracked artifacts do not count as dirty
         "git_dirty":        bool(_git("status", "--porcelain", "--untracked-files=no")),
@@ -474,7 +474,7 @@ def _create_h5(filepath):
         f.attrs['delta_n_eff']       = DELTA_N_EFF
         f.attrs['rng_seed']          = RNG_SEED
         f.attrs['solver_tol']        = 1e-2
-        f.attrs['block_dda_version'] = '0.8.0'
+        f.attrs['block_dda_version'] = '0.8.1'
         # Written only in --shifted-ri mode; their absence marks a per-RI-lattice file.
         if SHIFTED_RI:
             f.attrs['shifted_ri']     = True

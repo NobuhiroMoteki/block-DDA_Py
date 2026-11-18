@@ -13,7 +13,7 @@
 \large Discrete Dipole Approximation with FFT-accelerated\\
 Block-Krylov Solver for Light Scattering by Arbitrary Particles}
 \author{N.\ Moteki}
-\date{Last updated: 2026-11-17 (corresponds to block-DDA\_Py v0.8.0)}
+\date{Last updated: 2026-11-18 (corresponds to block-DDA\_Py v0.8.1)}
 
 \begin{document}
 \maketitle
@@ -34,7 +34,7 @@ the local electric field, which consists of the incident wave plus the fields
 radiated by all other dipoles.
 
 This document describes the theoretical background and the algorithms
-that are implemented in version~0.8.0 of
+that are implemented in version~0.8.1 of
 \texttt{block-DDA\_Py}, covering:
 \begin{enumerate}
   \item the DDA formulation and polarisability prescription
@@ -874,8 +874,9 @@ This costs $O(n_s^2 L^3)$.
 None of these costs depends on $N$.
 
 The option \texttt{lsq\_method="dense"} of
-\texttt{bl\_gmres\_shifted\_mvp\_fft} selects the original method
+\texttt{bl\_gmres\_shifted\_mvp\_fft} selects the method of v0.8.0
 instead.
+The incremental method is the default from v0.8.1.
 It computes \eqref{eq:augmented-qr} from scratch for every active shift
 at every step, without using the Hessenberg structure.
 This keeps no state per shift but costs $O\bigl((kL)^3\bigr)$ per shift

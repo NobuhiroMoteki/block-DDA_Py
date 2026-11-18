@@ -280,12 +280,12 @@ Spheroid mode reduces both peak memory and computation time by a factor of **1/4
 - v0.7.7: Bundled paper-production sweep results under `dda_results/paper/`
 - v0.7.8: Manuscript-release snapshot for the JQSRT submission
 
-### Shifted block-GMRES refractive-index sweep (v0.8.0)
-- `bl_gmres_shifted_mvp_fft`: one block-Arnoldi process for all refractive indices of a homogeneous isotropic particle on a common lattice
-- `DiscreteDipoles.set_interaction_matrix_shifted`, `solve_matrix_equation_shifted`, `compute_observables_shifted`: sweep API; observables are evaluated without assembling the solutions
-- `run_dda_spheroid_sweep.py --shifted-ri`: the `RI_real` axis is solved in one process per slot; the default mode is unchanged
-- `tests/`: pytest suite comparing the shifted path with the existing solver and with Mie theory
-- The per-shift least-squares problems are handled by an incremental block-Givens QR (`lsq_method="incremental"`, default). The original dense method is kept as `lsq_method="dense"`. At 64 orientations the incremental method cuts the least-squares time by a factor of 2.3 to 6.8
+### Shifted block-GMRES refractive-index sweep (v0.8.0 – v0.8.1)
+- v0.8.0: `bl_gmres_shifted_mvp_fft`: one block-Arnoldi process for all refractive indices of a homogeneous isotropic particle on a common lattice
+- v0.8.0: `DiscreteDipoles.set_interaction_matrix_shifted`, `solve_matrix_equation_shifted`, `compute_observables_shifted`: sweep API; observables are evaluated without assembling the solutions
+- v0.8.0: `run_dda_spheroid_sweep.py --shifted-ri`: the `RI_real` axis is solved in one process per slot; the default mode is unchanged
+- v0.8.0: `tests/`: pytest suite comparing the shifted path with the existing solver and with Mie theory
+- v0.8.1: The per-shift least-squares problems are handled by an incremental block-Givens QR (`lsq_method="incremental"`, default). The dense method of v0.8.0 is kept as `lsq_method="dense"`. At 64 orientations the incremental method cuts the least-squares time by a factor of 2.3 to 6.8. The results of the shifted sweep change at rounding level only
 
 ### Environment
 - **Python**: 3.12 (Windows) → **3.13 (Linux/WSL2)**

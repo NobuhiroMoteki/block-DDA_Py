@@ -285,6 +285,7 @@ Spheroid mode reduces both peak memory and computation time by a factor of **1/4
 - `DiscreteDipoles.set_interaction_matrix_shifted`, `solve_matrix_equation_shifted`, `compute_observables_shifted`: sweep API; observables are evaluated without assembling the solutions
 - `run_dda_spheroid_sweep.py --shifted-ri`: the `RI_real` axis is solved in one process per slot; the default mode is unchanged
 - `tests/`: pytest suite comparing the shifted path with the existing solver and with Mie theory
+- The per-shift least-squares problems are handled by an incremental block-Givens QR (`lsq_method="incremental"`, default). The original dense method is kept as `lsq_method="dense"`. At 64 orientations the incremental method cuts the least-squares time by a factor of 2.3 to 6.8
 
 ### Environment
 - **Python**: 3.12 (Windows) → **3.13 (Linux/WSL2)**

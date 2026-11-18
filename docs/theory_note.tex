@@ -851,9 +851,37 @@ factorisation of the augmented matrix:
   \text{residual norm} = \| \mathbf{R}_{\text{res}} \|_F .
   \label{eq:augmented-qr}
 \end{equation}
-Only the triangular factor is computed.
-The cost is $O\bigl((nL)^3\bigr)$ per shift and step.
-It does not depend on $N$.
+The matrix $\bar{\mathbf{H}}_n + \sigma_s\,\bar{\mathbf{I}}_n$ is block
+upper Hessenberg, so the factorisation \eqref{eq:augmented-qr} does not
+have to be recomputed at every step.
+The residual norm of every active shift is tracked by the incremental
+block QR of Sec.~\ref{sec:block-gmres}.
+Step $k$ carries the new block column of
+$\bar{\mathbf{H}}_k + \sigma_s\,\bar{\mathbf{I}}_k$ through the
+transformations of the steps $1, \ldots, k-1$ of shift $s$.
+The shift enters the diagonal block of this column only.
+A QR factorisation of a $2L \times L$ block then gives the
+transformation of step $k$, which is applied to the right-hand side.
+This costs $O(k L^3)$ per shift and step.
+The $2L \times 2L$ transformations of each shift are kept.
+They take $64\,n L^2$ bytes per shift after $n$ steps.
+The triangular factor $\mathbf{R}$ is not stored.
+When shift $s$ stops, $\mathbf{Y}_s^{(n_s)}$ is computed once.
+The stored transformations of shift $s$ are applied to the augmented
+matrix of \eqref{eq:augmented-qr}, which is built from the shared
+matrix $\bar{\mathbf{H}}_{n_s}$.
+This costs $O(n_s^2 L^3)$.
+None of these costs depends on $N$.
+
+The option \texttt{lsq\_method="dense"} of
+\texttt{bl\_gmres\_shifted\_mvp\_fft} selects the original method
+instead.
+It computes \eqref{eq:augmented-qr} from scratch for every active shift
+at every step, without using the Hessenberg structure.
+This keeps no state per shift but costs $O\bigl((kL)^3\bigr)$ per shift
+and step.
+The two methods give the same step counts and the same iterates up to
+rounding error.
 
 The shift invariance holds for the unrestarted method only.
 After a restart the residuals of different shifts span different
@@ -1102,6 +1130,10 @@ $D_{ve} = \SI{1.0}{\micro\meter}$.
 The runs used 16 threads on a machine with two Intel Xeon E5-2620~v4
 processors (16 cores in total).
 Table~\ref{tab:shift-benchmark} lists the results.
+The runs of Tables~\ref{tab:shift-benchmark}
+and~\ref{tab:shift-benchmark-L} used the dense least-squares method
+(\texttt{lsq\_method="dense"}, Sec.~\ref{sec:shift-iterate}).
+The incremental method is compared with it at the end of this section.
 
 \begin{table}[htbp]
   \centering
@@ -1226,10 +1258,8 @@ $D_{ve} = \SI{0.6}{\micro\meter}$ and \SI{8.9}{\percent} at
 $D_{ve} = \SI{1.0}{\micro\meter}$.
 The cost of the least-squares problems does not depend on $N$, so their
 share decreases with the particle size.
-The implementation solves each least-squares problem from scratch at
-every step.
-An incremental QR factorisation per shift, as in
-Sec.~\ref{sec:block-gmres}, is not implemented.
+The dense method solves each least-squares problem from scratch at
+every step, which explains this growth.
 
 The share of the Gram--Schmidt process also grows with $L$.
 One block inner product costs $O(N L^2)$ operations, whereas the block
@@ -1240,6 +1270,59 @@ after 11 steps and about \SI{48}{\percent} after 19 steps.
 The peak resident memory of method~C for this particle and $L = 64$ is
 \SI{13.3}{\gibi\byte}, which exceeds that of method~B by
 \SI{5}{\percent}.
+
+\paragraph{Incremental least squares.}
+The script \texttt{scripts/run\_shift\_lsq\_compare.py} solves the same
+sweeps by method~C with the dense and with the incremental
+least-squares method (Sec.~\ref{sec:shift-iterate}).
+Table~\ref{tab:shift-lsq} lists the share of the least-squares part in
+the solver time on the same machine.
+The step counts of the two methods are identical in all 16 runs.
+The forward scattering amplitudes differ by at most \num{8.3e-15} in
+relative terms.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Share of the least-squares part in the solver time of the
+           shifted block GMRES (in \si{\percent}) for the dense and
+           the incremental method.
+           The particle and the refractive indices are those of
+           Table~\ref{tab:shift-benchmark}.}
+  \label{tab:shift-lsq}
+  \begin{tabular}{lrlrrrr}
+    \toprule
+    & & & \multicolumn{2}{c}{$N_m = 15$}
+        & \multicolumn{2}{c}{$N_m = 30$} \\
+    \cmidrule(lr){4-5} \cmidrule(lr){6-7}
+    $D_{ve}$ (\si{\micro\meter}) & $L$ & tol
+      & dense & incremental & dense & incremental \\
+    \midrule
+    0.6 & 13 & $10^{-2}$ &  1.8 & 0.5 &  3.3 & 0.9 \\
+    0.6 & 13 & $10^{-5}$ &  3.6 & 0.6 &  7.1 & 1.1 \\
+    0.6 & 64 & $10^{-2}$ &  6.6 & 3.0 & 12.6 & 5.9 \\
+    0.6 & 64 & $10^{-5}$ & 15.2 & 3.6 & 26.7 & 7.1 \\
+    1.0 & 13 & $10^{-2}$ &  0.8 & 0.1 &  1.8 & 0.2 \\
+    1.0 & 13 & $10^{-5}$ &  1.7 & 0.2 &  3.9 & 0.3 \\
+    1.0 & 64 & $10^{-2}$ &  2.6 & 0.8 &  4.8 & 1.5 \\
+    1.0 & 64 & $10^{-5}$ &  5.8 & 0.9 & 11.0 & 1.8 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The incremental method reduces the time of the least-squares part by a
+factor of \numrange{2.3}{6.8} for $L = 64$ and by a factor of
+\numrange{3.5}{15} for $L = 13$.
+The share for $N_m = 15$ is at most \SI{3.6}{\percent}.
+For $L = 64$ and $N_m = 30$ the solver time drops from
+\SI{32.2}{\second} to \SI{26.2}{\second} at
+$D_{ve} = \SI{0.6}{\micro\meter}$ and from \SI{169.2}{\second} to
+\SI{153.5}{\second} at $D_{ve} = \SI{1.0}{\micro\meter}$, both at
+$\text{tol} = 10^{-5}$.
+The gain is smallest when the number of steps is small.
+The QR factorisation of the $2L \times L$ block of each shift then
+dominates the least-squares part, and this cost is the same at every
+step.
+The peak resident memory changes by less than \SI{0.1}{\gibi\byte}.
 
 %======================================================================
 \section{Computational Performance: Old vs.\ New Implementation}

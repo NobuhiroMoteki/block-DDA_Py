@@ -34,7 +34,7 @@ the local electric field, which consists of the incident wave plus the fields
 radiated by all other dipoles.
 
 This document describes the theoretical background and the algorithms
-that are implemented in version~0.7.6 of
+that are implemented in version~0.8.0 of
 \texttt{block-DDA\_Py}, covering:
 \begin{enumerate}
   \item the DDA formulation and polarisability prescription
@@ -43,6 +43,8 @@ that are implemented in version~0.7.6 of
         (Sec.~\ref{sec:goodman-fft}),
   \item the block-Krylov iterative solvers
         (Sec.~\ref{sec:block-krylov}),
+  \item the shifted block GMRES for refractive-index sweeps
+        (Sec.~\ref{sec:shifted-gmres}),
   \item the scattering observables computed from the solution
         (Sec.~\ref{sec:observables}),
   \item the Gaussian Random Ellipsoid (GRE) shape model
@@ -440,12 +442,147 @@ $\mathbf{B}$ (shape $3N \times L$), the problem becomes
 where $\mathbf{X}$ (shape $3N \times L$) contains the $L$ solution
 vectors.
 
+The solver of \texttt{block-DDA\_Py} is unrestarted block GMRES
+without preconditioning (Sec.~\ref{sec:block-gmres}).
+The method \texttt{DiscreteDipoles.solve\_matrix\_equation} calls it.
+Earlier versions used Block-BiCGSTAB with Jacobi preconditioning.
+That solver and two other block solvers are still available in
+\texttt{bl\_krylov/bl\_krylov.py} (Sec.~\ref{sec:alt-solvers}).
+
 %----------------------------------------------------------------------
-\subsection{Jacobi preconditioning}
-\label{sec:jacobi}
+\subsection{Block GMRES}
+\label{sec:block-gmres}
 %----------------------------------------------------------------------
 
-A left Jacobi (diagonal) preconditioner is applied:
+Block GMRES~\cite{SaadSchultz1986,SimonciniGallopoulos1996} builds an
+orthonormal basis of the block Krylov subspace
+\begin{equation}
+  \mathcal{K}_n(\mathbf{A}, \mathbf{B})
+    = \operatorname{span}\{\mathbf{B}, \mathbf{A}\mathbf{B}, \ldots,
+      \mathbf{A}^{n-1}\mathbf{B}\} .
+  \label{eq:block-krylov-subspace}
+\end{equation}
+Its iterate is the element of this subspace that minimises the
+Frobenius norm of the residual.
+The implementation is \texttt{bl\_gmres\_mvp\_fft}.
+It is the multi-orientation block GMRES of Ref.~\cite{Moteki2026}.
+
+\paragraph{Block Arnoldi process.}
+The initial guess is $\mathbf{X}^{(0)} = \mathbf{0}$, so the initial
+residual is $\mathbf{B}$.
+Its thin QR factorisation is
+$\mathbf{B} = \mathbf{V}_1 \boldsymbol{\Lambda}$ with
+$\mathbf{V}_1 \in \mathbb{C}^{3N \times L}$ and
+$\boldsymbol{\Lambda} \in \mathbb{C}^{L \times L}$.
+Step $k$ computes one block matrix--vector product
+$\mathbf{W} = \mathbf{A}\,\mathbf{V}_k$ (Sec.~\ref{sec:goodman-fft}).
+The block $\mathbf{W}$ is then orthogonalised against the previous
+blocks by the block modified Gram--Schmidt process:
+\begin{equation}
+  \mathbf{H}_{ik} = \mathbf{V}_i^\dagger\,\mathbf{W},
+  \qquad
+  \mathbf{W} \leftarrow \mathbf{W} - \mathbf{V}_i\,\mathbf{H}_{ik},
+  \qquad i = 1, \ldots, k .
+  \label{eq:block-gram-schmidt}
+\end{equation}
+The thin QR factorisation
+$\mathbf{W} = \mathbf{V}_{k+1}\,\mathbf{H}_{k+1,k}$ gives the next
+block.
+After $n$ steps the blocks satisfy
+\begin{equation}
+  \mathbf{A}\,\mathbf{Q}_n = \mathbf{Q}_{n+1}\,\bar{\mathbf{H}}_n,
+  \qquad
+  \mathbf{Q}_n = [\mathbf{V}_1, \ldots, \mathbf{V}_n],
+  \label{eq:block-arnoldi-full}
+\end{equation}
+where $\bar{\mathbf{H}}_n \in \mathbb{C}^{(n+1)L \times nL}$ is the
+block upper Hessenberg matrix of the blocks $\mathbf{H}_{ik}$.
+
+\paragraph{Iterate and residual.}
+The iterate after $n$ steps is
+$\mathbf{X}^{(n)} = \mathbf{Q}_n \mathbf{Y}^{(n)}$.
+Because $\mathbf{Q}_{n+1}$ has orthonormal columns and
+$\mathbf{B} = \mathbf{Q}_{n+1} \mathbf{E}_1 \boldsymbol{\Lambda}$ with
+$\mathbf{E}_1 = [\mathbf{I}_L, \mathbf{0}, \ldots, \mathbf{0}]^\top$,
+the residual norm is
+$\| \mathbf{B} - \mathbf{A}\,\mathbf{Q}_n \mathbf{Y} \|_F
+ = \| \mathbf{E}_1 \boldsymbol{\Lambda}
+      - \bar{\mathbf{H}}_n \mathbf{Y} \|_F$.
+The coefficient block is therefore
+\begin{equation}
+  \mathbf{Y}^{(n)}
+    = \arg\min_{\mathbf{Y}}
+      \bigl\| \mathbf{E}_1 \boldsymbol{\Lambda}
+        - \bar{\mathbf{H}}_n \mathbf{Y} \bigr\|_F .
+  \label{eq:gmres-lsq}
+\end{equation}
+
+The least-squares problem \eqref{eq:gmres-lsq} is not solved at every
+step.
+The matrix $\bar{\mathbf{H}}_n$ is reduced to upper triangular form
+one block column at a time.
+Step $k$ first applies the orthogonal transformations of the steps
+$1, \ldots, k-1$ to the new block column.
+It then computes a QR factorisation of the $2L \times L$ block that
+holds the diagonal and subdiagonal blocks of this column.
+The $2L \times 2L$ orthogonal factor is stored and is also applied to
+the transformed right-hand side.
+After $n$ steps the right-hand side
+$\mathbf{E}_1 \boldsymbol{\Lambda}$ has become
+$[\mathbf{g}_n^\top, \boldsymbol{\rho}_n^\top]^\top$ with
+$\boldsymbol{\rho}_n \in \mathbb{C}^{L \times L}$, and
+\begin{equation}
+  \frac{\| \mathbf{B} - \mathbf{A}\,\mathbf{X}^{(n)} \|_F}
+       {\| \mathbf{B} \|_F}
+  = \frac{\| \boldsymbol{\rho}_n \|_F}{\| \mathbf{B} \|_F} .
+  \label{eq:gmres-residual}
+\end{equation}
+The relative residual is thus known at every step at a cost of
+$O(k L^3)$, which does not depend on $N$.
+
+\paragraph{Stopping test and solution.}
+The iteration stops when the relative residual
+\eqref{eq:gmres-residual} falls below the tolerance $\tau$ or when
+$n$ reaches $n_{\max}$.
+The block $\mathbf{Y}^{(n)}$ is then obtained by back substitution
+with the triangular factor, and
+$\mathbf{X}^{(n)} = \mathbf{Q}_n \mathbf{Y}^{(n)}$ is assembled.
+The defaults are $\tau = 10^{-2}$ and $n_{\max} = 25$.
+They are the attributes \texttt{tol} and \texttt{itermax} of
+\texttt{DiscreteDipoles}.
+The attribute \texttt{converge} is set to \texttt{True} only when the
+test is passed.
+
+\paragraph{Cost and memory.}
+Each step needs one block matrix--vector product.
+The Gram--Schmidt process \eqref{eq:block-gram-schmidt} of step $k$
+needs $k$ block inner products and updates of $O(N L^2)$ operations
+each.
+Its total cost grows quadratically with the number of steps
+(Eq.~\eqref{eq:gmres-cost}).
+The method is not restarted, so all blocks are kept.
+The basis needs $16 \cdot 3N \cdot L \cdot (n+1)$ bytes after $n$
+steps.
+The triangular factor is allocated for $n_{\max}$ steps and takes
+$16\,(n_{\max} L)^2$ bytes.
+
+%----------------------------------------------------------------------
+\subsection{Alternative solvers}
+\label{sec:alt-solvers}
+%----------------------------------------------------------------------
+
+The module \texttt{bl\_krylov/bl\_krylov.py} keeps three other block
+solvers.
+\texttt{DiscreteDipoles} does not call them.
+They take the same arguments as \texttt{bl\_gmres\_mvp\_fft}.
+All three use short recurrences, so their memory does not grow with the
+number of iterations.
+
+\subsubsection{Jacobi preconditioning}
+\label{sec:jacobi}
+
+Two of the alternative solvers apply a left Jacobi (diagonal)
+preconditioner:
 \begin{equation}
   \mathbf{M}^{-1} = \operatorname{diag}(\mathbf{A})^{-1}
                    = \operatorname{diag}(\alpha_{c,i}),
@@ -453,21 +590,20 @@ A left Jacobi (diagonal) preconditioner is applied:
 \end{equation}
 so that the preconditioned system becomes
 $\mathbf{M}^{-1}\mathbf{A}\,\mathbf{X} = \mathbf{M}^{-1}\mathbf{B}$.
+Their stopping test uses the residual of the preconditioned system.
 
-%----------------------------------------------------------------------
-\subsection{Block-BiCGSTAB}
+\subsubsection{Block-BiCGSTAB}
 \label{sec:bicgstab}
-%----------------------------------------------------------------------
 
-The primary solver is Block-BiCGSTAB~\cite{Tadano2009}, which extends
-the stabilised bi-conjugate gradient method to block systems.
-It is suitable for general (non-symmetric) matrices and is the default
-in \texttt{block-DDA\_Py}.
-
-The algorithm is summarised in Table~\ref{tab:bicgstab}.
-Each iteration requires two block MVPs (lines~1 and~4).
-The default convergence parameters are $\tau = 0.01$ and
-$n_{\max} = 25$.
+Block-BiCGSTAB~\cite{Tadano2009} extends the stabilised bi-conjugate
+gradient method to block systems.
+It is suitable for general (non-symmetric) matrices.
+Each iteration requires two block MVPs (lines~1 and~4 of
+Table~\ref{tab:bicgstab}).
+The function \texttt{bl\_bicgstab\_jacobi\_mvp\_fft} implements the
+algorithm of Table~\ref{tab:bicgstab}.
+The function \texttt{bl\_bicgstab\_mvp\_fft} is the same algorithm
+without the preconditioner ($\mathbf{M} = \mathbf{I}$).
 
 \begin{table}[htbp]
   \caption{Block-BiCGSTAB with Jacobi preconditioning
@@ -520,23 +656,19 @@ $n_{\max} = 25$.
   \end{tabular}
 \end{table}
 
-%----------------------------------------------------------------------
-\subsection{Block-COCG-rq (alternative solver)}
+\subsubsection{Block-COCG-rq}
 \label{sec:cocg}
-%----------------------------------------------------------------------
 
-Since the DDA interaction matrix $\mathbf{A}$ is complex symmetric
-($\mathbf{A} = \mathbf{A}^\top$), a solver specialised for this
-structure, Block-COCG-rq~\cite{Gu2016}, is also provided.
-Block-COCG-rq requires only one block MVP per iteration and is
-therefore faster per iteration than Block-BiCGSTAB.
-However, for particles with high refractive index it exhibits
-poorer convergence stability compared to Block-BiCGSTAB.
-To switch the solver, replace the import and function call in
-\texttt{bl\_dda/scatterer.py} (line~3 and line~169):
-change \texttt{bl\_bicgstab\_jacobi\_mvp\_fft} to
-\texttt{bl\_cocg\_rq\_jacobi\_mvp\_fft}.
-Both functions share the same interface.
+The DDA interaction matrix $\mathbf{A}$ is complex symmetric
+($\mathbf{A} = \mathbf{A}^\top$).
+Block-COCG-rq~\cite{Gu2016} is a solver specialised for this
+structure.
+It requires only one block MVP per iteration and is therefore faster
+per iteration than Block-BiCGSTAB.
+For particles with a high refractive index its convergence is less
+stable than that of Block-BiCGSTAB.
+The function \texttt{bl\_cocg\_rq\_jacobi\_mvp\_fft} implements it with
+Jacobi preconditioning.
 
 %======================================================================
 \section{Shifted Block GMRES for Refractive-Index Sweeps}
@@ -683,9 +815,8 @@ The iterate of shift $s$ is the minimiser
   \mathbf{X}_s^{(n)} = \mathbf{Q}_n \mathbf{Y}_s^{(n)} .
   \label{eq:shifted-lsq}
 \end{equation}
-Unrestarted block GMRES~\cite{SaadSchultz1986,SimonciniGallopoulos1996}
-applied to system $s$ alone minimises the same residual over the same
-subspace.
+Unrestarted block GMRES (Sec.~\ref{sec:block-gmres}) applied to
+system $s$ alone minimises the same residual over the same subspace.
 The iterate \eqref{eq:shifted-lsq} is therefore identical to the one of
 an independent solve.
 The stopping test is applied to each shift separately:
@@ -1053,6 +1184,9 @@ This section compares the computational cost of the previous
 implementation (Barrowes 2001 block-Toeplitz FFT with \texttt{ray}
 multiprocessing) and the current implementation (Goodman 1991 3D FFT
 with NumPy/SciPy broadcasting).
+The estimates were made when Block-BiCGSTAB was the solver, with two
+block MVPs per iteration.
+The comparison per block MVP applies to block GMRES as well.
 
 %----------------------------------------------------------------------
 \subsection{MVP complexity}

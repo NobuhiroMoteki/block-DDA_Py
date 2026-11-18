@@ -454,8 +454,68 @@ def _block_mvp_offdiag(n, f, Au_til, full_idx, S):
     return AP_full[full_idx, :]
 
 
+def _shifted_lstsq_dense(Hbar, Lambda, sigma, k):
+    """
+    Solve  min_Y ‖E_1 Λ − (Hbar_k + sigma Ibar_k) Y‖_F  by a dense QR.
+
+    The QR of the augmented matrix [Hbar_k + sigma Ibar_k | E_1 Λ] is
+    [[R, c_top], [0, c_bot]], with ‖c_bot‖_F the minimum. The block Hessenberg
+    structure is not used, so the cost is O((kL)^3).
+
+    Parameters
+    ----------
+    Hbar   : 2-D complex array, at least ((k+1)L, kL)   block Hessenberg matrix
+    Lambda : 2-D complex array (L, L)
+    sigma  : complex   the shift
+    k      : int       number of block columns
+
+    Returns
+    -------
+    Y   : ndarray (kL, L)   the minimiser
+    res : float             the minimum ‖E_1 Λ − (Hbar_k + sigma Ibar_k) Y‖_F
+    """
+    L = Lambda.shape[0]
+    kL = k * L
+    M = np.zeros((kL + L, kL + L), dtype=np.complex128)
+    M[:, :kL] = Hbar[:kL + L, :kL]
+    M[:L, kL:] = Lambda
+    diag = np.arange(kL)
+    M[diag, diag] += sigma
+    R_aug = np.linalg.qr(M, mode='r')
+    Y = scipy.linalg.solve_triangular(R_aug[:kL, :kL], R_aug[:kL, kL:], lower=False)
+    return Y, float(np.linalg.norm(R_aug[kL:, kL:]))
+
+
+def _shifted_lstsq_hessenberg(Hbar, Lambda, sigma, k):
+    """
+    Solve  min_Y ‖E_1 Λ − (Hbar_k + sigma Ibar_k) Y‖_F  by a block-Givens QR.
+
+    Same problem as `_shifted_lstsq_dense`. The block Hessenberg structure is
+    used: block column j is eliminated by a QR of the 2L × L block that holds
+    its diagonal and subdiagonal blocks, and the 2L × 2L orthogonal factor is
+    applied to the columns to its right. The cost is O(k^2 L^3).
+
+    Parameters and returns: see `_shifted_lstsq_dense`.
+    """
+    L = Lambda.shape[0]
+    kL = k * L
+    M = np.zeros((kL + L, kL + L), dtype=np.complex128)
+    M[:, :kL] = Hbar[:kL + L, :kL]
+    M[:L, kL:] = Lambda
+    diag = np.arange(kL)
+    M[diag, diag] += sigma
+    for j in range(k):
+        rows = slice(j * L, (j + 2) * L)
+        Qmat, Rmat = np.linalg.qr(M[rows, j * L:(j + 1) * L], mode='complete')
+        M[rows, (j + 1) * L:] = Qmat.conj().T @ M[rows, (j + 1) * L:]
+        M[rows, j * L:(j + 1) * L] = Rmat
+    Y = scipy.linalg.solve_triangular(M[:kL, :kL], M[:kL, kL:], lower=False)
+    return Y, float(np.linalg.norm(M[kL:, kL:]))
+
+
 def bl_gmres_shifted_mvp_fft(n, f, address, Au_til, sigmas, B, tol, itermax,
-                             proj_ops=None, return_X=False, verbose=False):
+                             proj_ops=None, return_X=False, verbose=False,
+                             lsq_method="incremental"):
     """
     Unrestarted shifted block GMRES without preconditioning.
 
@@ -488,10 +548,23 @@ def bl_gmres_shifted_mvp_fft(n, f, address, Au_til, sigmas, B, tol, itermax,
     `tol`, or at k = itermax. Its Y_s is frozen at that step. The process ends
     when every shift has stopped.
 
-    The least-squares problems are solved from scratch at every step by a dense
-    QR of the augmented matrix [Hbar_k + sigma_s Ibar_k | E_1 Λ]. This costs
-    O((kL)^3) per shift and step, which is small against the MVP as long as kL
-    is a few hundred.
+    Two ways of handling the per-shift least-squares problems are available
+    (`lsq_method`). They give the same iterates up to rounding.
+
+    "incremental" (default): the residual of every active shift is tracked by
+        an incremental block-Givens QR of Hbar_k + sigma_s Ibar_k, as in
+        `bl_gmres_mvp_fft`. Step k applies the transformations of the steps
+        1 … k−1 to the new block column and eliminates its subdiagonal block
+        by a QR of a 2L × L block. This costs O(k L^3) per shift and step.
+        Only the lower L rows of each 2L × 2L transformation are kept, which
+        is 32 k L^2 bytes per shift after k steps. The triangular factor is
+        not stored. When a shift stops, its Y_s is computed once from the
+        shared Hbar_k by `_shifted_lstsq_hessenberg` at a cost of O(k^2 L^3).
+    "dense": the least-squares problem of every active shift is solved from
+        scratch at every step by a dense QR of the augmented matrix
+        [Hbar_k + sigma_s Ibar_k | E_1 Λ] (`_shifted_lstsq_dense`). No
+        per-shift state is kept. This costs O((kL)^3) per shift and step,
+        which becomes visible for L of several tens.
 
     Parameters
     ----------
@@ -506,6 +579,7 @@ def bl_gmres_shifted_mvp_fft(n, f, address, Au_til, sigmas, B, tol, itermax,
                assembling X_s.
     return_X : bool    also assemble and return the full solutions X_s
     verbose  : bool    print the residual range of the active shifts per step
+    lsq_method : str   "incremental" (default) or "dense", see above
 
     Returns
     -------
@@ -523,6 +597,8 @@ def bl_gmres_shifted_mvp_fft(n, f, address, Au_til, sigmas, B, tol, itermax,
         raise ValueError("sigmas must be a 1-D array of shifts")
     if itermax < 1:
         raise ValueError("itermax must be at least 1")
+    if lsq_method not in ("incremental", "dense"):
+        raise ValueError('lsq_method must be "incremental" or "dense"')
     N_m = sigmas.size
     L = B.shape[1]
     N = B.shape[0]
@@ -558,6 +634,15 @@ def bl_gmres_shifted_mvp_fft(n, f, address, Au_til, sigmas, B, tol, itermax,
     active = list(range(N_m))
     timings = {'mvp': 0.0, 'gs': 0.0, 'lsq': 0.0, 'proj': 0.0}
 
+    # State of the incremental block-Givens QR, one row per active shift.
+    # Transformation j is Q_j^H (2L × 2L). Only its lower L rows [QA_j | QB_j]
+    # are needed to carry a new block column or the right-hand side forward.
+    incremental = lsq_method == "incremental"
+    QA = []                                         # QA[j-1]: (n_active, L, L)
+    QB = []                                         # QB[j-1]: (n_active, L, L)
+    rho = np.broadcast_to(Lambda, (N_m, L, L)).copy()   # last block of the transformed RHS
+    eye_L = np.eye(L, dtype=np.complex128)
+
     for k in range(1, itermax + 1):
         Vk = Vblocks[k - 1]
         t0 = time.perf_counter()
@@ -592,27 +677,58 @@ def bl_gmres_shifted_mvp_fft(n, f, address, Au_til, sigmas, B, tol, itermax,
         t3 = time.perf_counter()
         timings['gs'] += t3 - t2
 
-        # Augmented matrix [Hbar_k | E_1 Λ], shape ((k+1)L, (k+1)L). Its QR gives
-        # [[R, c_top], [0, c_bot]] with ‖c_bot‖_F the least-squares residual.
-        kL = k * L
-        aug = np.zeros((kL + L, kL + L), dtype=np.complex128)
-        aug[:, :kL] = Hbar[:kL + L, :kL]
-        aug[:L, kL:] = Lambda
-        diag = np.arange(kL)
-
         err_row = np.full(N_m, np.nan, dtype=np.float64)
-        for s in list(active):
-            M = aug.copy()
-            M[diag, diag] += sigmas[s]
-            R_aug = np.linalg.qr(M, mode='r')
-            err = np.linalg.norm(R_aug[kL:, kL:]) / B_norm
-            err_row[s] = err
-            if err < tol or k == itermax:
-                Y_list[s] = scipy.linalg.solve_triangular(
-                    R_aug[:kL, :kL], R_aug[:kL, kL:], lower=False)
-                iters[s] = k
-                errs[s] = err
-                active.remove(s)
+        if incremental:
+            # Block column k of Hbar_k + sigma_s Ibar_k: the shift enters the
+            # diagonal block (block row k) only. Carry the column through the
+            # stored transformations; `carry` is the lower block after each one.
+            sig_act = sigmas[active]                                # shape: (n_active,)
+            shift_blk = sig_act[:, None, None] * eye_L              # shape: (n_active, L, L)
+            carry = Hbar[:L, col]                                   # shape: (L, L), shared
+            if k == 1:
+                carry = carry + shift_blk
+            for j in range(1, k):
+                blk = Hbar[j * L:(j + 1) * L, col]                  # block row j+1, shared
+                if j == k - 1:
+                    blk = blk + shift_blk
+                carry = QA[j - 1] @ carry + QB[j - 1] @ blk         # shape: (n_active, L, L)
+
+            # New transformation: QR of the 2L × L block [carry; H_{k+1,k}].
+            sup = np.empty((len(active), 2 * L, L), dtype=np.complex128)
+            sup[:, :L, :] = carry
+            sup[:, L:, :] = Hk1k
+            Qmat = np.linalg.qr(sup, mode='complete')[0]            # shape: (n_active, 2L, 2L)
+            Qlow = Qmat[:, :, L:].conj().transpose(0, 2, 1)         # lower L rows of Q^H
+            QA.append(np.ascontiguousarray(Qlow[:, :, :L]))
+            QB.append(np.ascontiguousarray(Qlow[:, :, L:]))
+
+            # Transformed right-hand side: rows kL:(k+1)L hold the residual block.
+            rho = QA[k - 1] @ rho                                   # shape: (n_active, L, L)
+            err_act = np.linalg.norm(rho, axis=(1, 2)) / B_norm
+            err_row[active] = err_act
+
+            keep = np.ones(len(active), dtype=bool)
+            for i, s in enumerate(list(active)):
+                if err_act[i] < tol or k == itermax:
+                    Y_list[s] = _shifted_lstsq_hessenberg(Hbar, Lambda, sigmas[s], k)[0]
+                    iters[s] = k
+                    errs[s] = err_act[i]
+                    keep[i] = False
+            if not keep.all():
+                active = [s for i, s in enumerate(active) if keep[i]]
+                QA = [q[keep] for q in QA]
+                QB = [q[keep] for q in QB]
+                rho = rho[keep]
+        else:
+            for s in list(active):
+                Y, res = _shifted_lstsq_dense(Hbar, Lambda, sigmas[s], k)
+                err = res / B_norm
+                err_row[s] = err
+                if err < tol or k == itermax:
+                    Y_list[s] = Y
+                    iters[s] = k
+                    errs[s] = err
+                    active.remove(s)
         err_history.append(err_row)
         timings['lsq'] += time.perf_counter() - t3
 

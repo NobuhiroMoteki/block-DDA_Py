@@ -137,6 +137,22 @@ def test_optical_theorem_links_forward_amplitudes_and_extinction(sweep):
     np.testing.assert_allclose(lhs, rhs, rtol=1e-12)
 
 
+def test_observables_do_not_depend_on_least_squares_method(geometry):
+    """``lsq_method`` is passed through and both methods give the same observables."""
+    m_max = max(sc.SPHEROID_M_LIST, key=abs)
+    obs = {}
+    for lsq_method in ("incremental", "dense"):
+        dd = sc.make_spheroid_dipoles(geometry, m_max)
+        dd.tol, dd.itermax = 1e-5, 60
+        sc.quiet(dd.set_interaction_matrix_shifted, sc.SPHEROID_M_LIST)
+        sc.quiet(dd.solve_matrix_equation_shifted, lsq_method=lsq_method)
+        assert dd.converge_shifted.all()
+        obs[lsq_method] = dd.compute_observables_shifted()
+    for name, value in obs["dense"].items():
+        np.testing.assert_allclose(obs["incremental"][name], value, rtol=1e-10, atol=1e-18,
+                                   err_msg=name)
+
+
 def test_unconverged_refractive_indices_are_nan(geometry):
     # itermax = 5 at tol = 1e-2: only m = 1.70 needs a sixth step.
     m_max = max(sc.SPHEROID_M_LIST, key=abs)

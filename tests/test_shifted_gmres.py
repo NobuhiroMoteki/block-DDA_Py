@@ -8,6 +8,10 @@ T2  a single shift reproduces ``bl_gmres_mvp_fft``
 T3  truncation at ``itermax`` is reported through ``errs``
 T4  a zero right-hand side does not raise
 plus checks of the true residual, of the projection operators and of Λ.
+
+The per-shift least squares has two implementations (``lsq_method``):
+"incremental" (default) and "dense". T1 and T3 run with both, and the two are
+compared with each other and with ``numpy.linalg.lstsq``.
 """
 import numpy as np
 import pytest
@@ -16,9 +20,13 @@ import shifted_cases as sc
 from bl_krylov.bl_krylov import (
     _block_mvp_noprec,
     _build_scatter_index,
+    _shifted_lstsq_dense,
+    _shifted_lstsq_hessenberg,
     bl_gmres_mvp_fft,
     bl_gmres_shifted_mvp_fft,
 )
+
+LSQ_METHODS = ("incremental", "dense")
 
 RTOL_X = 1e-10   # relative Frobenius tolerance on solutions
 
@@ -80,9 +88,11 @@ def _true_residual(system, s, X):
 
 
 # ── T1 ───────────────────────────────────────────────────────────────────────
+@pytest.mark.parametrize("lsq_method", LSQ_METHODS)
 @pytest.mark.parametrize("tol, itermax", sc.SPHEROID_SOLVER_SETTINGS)
-def test_t1_all_shifts_match_independent_solves(system, tol, itermax):
-    res = _solve_shifted(system, system["sigmas"], tol, itermax, return_X=True)
+def test_t1_all_shifts_match_independent_solves(system, tol, itermax, lsq_method):
+    res = _solve_shifted(system, system["sigmas"], tol, itermax, return_X=True,
+                         lsq_method=lsq_method)
     L = system["B"].shape[1]
     for s in range(len(system["sigmas"])):
         X_ref, n_iter, err_fin, err_history = _solve_independent(system, s, tol, itermax)
@@ -112,10 +122,12 @@ def test_t2_single_shift_matches_existing_solver(system, s):
 
 
 # ── T3 ───────────────────────────────────────────────────────────────────────
-def test_t3_itermax_truncation_is_reported(system):
+@pytest.mark.parametrize("lsq_method", LSQ_METHODS)
+def test_t3_itermax_truncation_is_reported(system, lsq_method):
     # itermax = 5 at tol = 1e-2: m = 1.70 needs 6 steps, the others at most 5.
     tol, itermax = 1e-2, 5
-    res = _solve_shifted(system, system["sigmas"], tol, itermax, return_X=True)
+    res = _solve_shifted(system, system["sigmas"], tol, itermax, return_X=True,
+                         lsq_method=lsq_method)
     n_iter_full = np.array(
         [_solve_independent(system, s, tol, 25)[1] for s in range(len(system["sigmas"]))])
     unconverged = n_iter_full > itermax
@@ -129,7 +141,7 @@ def test_t3_itermax_truncation_is_reported(system):
         assert _true_residual(system, s, res.X_list[s]) == pytest.approx(res.errs[s], rel=1e-6)
 
     # All shifts truncated.
-    res = _solve_shifted(system, system["sigmas"], 1e-5, 3)
+    res = _solve_shifted(system, system["sigmas"], 1e-5, 3, lsq_method=lsq_method)
     assert np.all(res.errs >= 1e-5)
     assert np.all(res.iters == 3)
     assert res.err_history.shape == (3, len(system["sigmas"]))
@@ -212,8 +224,60 @@ def test_hessenberg_growth_beyond_initial_capacity(system):
     assert _rel_diff(res.X_list[0], X_ref) < RTOL_X
 
 
+# ── least-squares implementations ────────────────────────────────────────────
+@pytest.mark.parametrize("tol, itermax", sc.SPHEROID_SOLVER_SETTINGS + ((1e-9, 60),))
+def test_incremental_and_dense_least_squares_agree(system, tol, itermax):
+    """Same step counts, residual histories, coefficients, projections and solutions."""
+    rng = np.random.default_rng(1)
+    B = system["B"]
+    F = rng.standard_normal((2,) + B.shape) + 1j * rng.standard_normal((2,) + B.shape)
+    res_i = _solve_shifted(system, system["sigmas"], tol, itermax, proj_ops=F,
+                           return_X=True, lsq_method="incremental")
+    res_d = _solve_shifted(system, system["sigmas"], tol, itermax, proj_ops=F,
+                           return_X=True, lsq_method="dense")
+    assert np.array_equal(res_i.iters, res_d.iters)
+    assert np.all(res_i.errs < tol)
+    # Residual norms lose relative accuracy as they approach rounding level.
+    np.testing.assert_allclose(res_i.errs, res_d.errs, rtol=1e-6)
+    assert np.array_equal(np.isnan(res_i.err_history), np.isnan(res_d.err_history))
+    np.testing.assert_allclose(res_i.err_history, res_d.err_history, rtol=1e-6)
+    # The Arnoldi process does not depend on the least-squares method.
+    assert np.array_equal(res_i.G, res_d.G)
+    assert np.array_equal(res_i.Lambda, res_d.Lambda)
+    for s in range(len(system["sigmas"])):
+        assert _rel_diff(res_i.Y_list[s], res_d.Y_list[s]) < RTOL_X
+        assert _rel_diff(res_i.X_list[s], res_d.X_list[s]) < RTOL_X
+
+
+def test_structured_least_squares_matches_lstsq():
+    """Both helpers solve min ‖E_1 Λ − (Hbar_k + σ Ibar_k) Y‖_F for a random block Hessenberg."""
+    rng = np.random.default_rng(2)
+    L, k_cap = 4, 7
+    Hbar = (rng.standard_normal(((k_cap + 1) * L, k_cap * L))
+            + 1j * rng.standard_normal(((k_cap + 1) * L, k_cap * L)))
+    for j in range(k_cap):                              # zero below the block subdiagonal
+        Hbar[(j + 2) * L:, j * L:(j + 1) * L] = 0.0
+    Lambda = rng.standard_normal((L, L)) + 1j * rng.standard_normal((L, L))
+    sigma = 0.7 - 0.3j
+    for k in (1, 2, 5, k_cap):                          # k < k_cap: Hbar is larger than needed
+        kL = k * L
+        A = Hbar[:kL + L, :kL].copy()
+        A[np.arange(kL), np.arange(kL)] += sigma
+        rhs = np.zeros((kL + L, L), dtype=np.complex128)
+        rhs[:L] = Lambda
+        Y_ref = np.linalg.lstsq(A, rhs, rcond=None)[0]
+        res_ref = np.linalg.norm(rhs - A @ Y_ref)
+        for solve in (_shifted_lstsq_dense, _shifted_lstsq_hessenberg):
+            Y, res = solve(Hbar, Lambda, sigma, k)
+            assert Y.shape == (kL, L)
+            assert _rel_diff(Y, Y_ref) < 1e-12
+            assert res == pytest.approx(res_ref, rel=1e-12)
+
+
 def test_invalid_arguments(system):
     with pytest.raises(ValueError):
         _solve_shifted(system, np.ones((2, 2)), 1e-5, 10)
     with pytest.raises(ValueError):
         _solve_shifted(system, system["sigmas"], 1e-5, 0)
+    with pytest.raises(ValueError):
+        _solve_shifted(system, system["sigmas"], 1e-5, 10, lsq_method="qr")

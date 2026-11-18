@@ -381,7 +381,7 @@ class DiscreteDipoles(Target, IncidentField):
         ])
 
 
-    def solve_matrix_equation_shifted(self, return_X=False):
+    def solve_matrix_equation_shifted(self, return_X=False, lsq_method="incremental"):
         """
         Solve all refractive indices of ``set_interaction_matrix_shifted`` with
         one shifted block-GMRES process (``bl_gmres_shifted_mvp_fft``).
@@ -393,6 +393,10 @@ class DiscreteDipoles(Target, IncidentField):
         ----------
         return_X : bool   also keep the full solutions (``shifted_result.X_list``,
                           each of shape (3N, L)). Not needed for the observables.
+        lsq_method : str  "incremental" (default) or "dense"; how the per-shift
+                          least-squares problems are handled, see
+                          ``bl_gmres_shifted_mvp_fft``. Both give the same result
+                          up to rounding.
 
         Sets
         ----
@@ -406,7 +410,7 @@ class DiscreteDipoles(Target, IncidentField):
         self.shifted_result = bl_gmres_shifted_mvp_fft(
             self.lattice_n, self.f, self.lattice_address_in_target,
             self.Au_til, self.sigmas, self.B, self.tol, self.itermax,
-            proj_ops=F, return_X=return_X)
+            proj_ops=F, return_X=return_X, lsq_method=lsq_method)
         del F
 
         res = self.shifted_result

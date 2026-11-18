@@ -1,4 +1,4 @@
-# block-DDA_Py  [![version](https://img.shields.io/badge/version-v0.8.2-blue)](https://github.com/NobuhiroMoteki/block-DDA_Py/releases)
+# block-DDA_Py  [![version](https://img.shields.io/badge/version-v0.8.3-blue)](https://github.com/NobuhiroMoteki/block-DDA_Py/releases)
 
 ## 📌 Description
 A Python code for the Discrete Dipole Approximation (DDA) using block-Krylov type iterative solvers, with custom features for light-scattering simulations of environmental particles (e.g., mineral dust).
@@ -101,7 +101,7 @@ There are three ways to sweep the parameters. Choose by the particle shape and b
 |---|---|---|---|
 | Entry point | `dda_results/create_h5py.ipynb` + `run_dda.py` | `run_dda_spheroid_sweep.py` | your own script |
 | Particle shape | any GRE shape, isotropic or anisotropic | spheroids only | any GRE shape |
-| Refractive index | list `m_p_xyz_list`, one solve per entry | regular grid `RI_REAL_RANGE`; one solve per value, or one solve for the whole axis with `--shifted-ri` | list of isotropic values, one solve for the whole list |
+| Refractive index | list `m_p_xyz_list`; one solve per entry, or one solve for all isotropic entries with `--shifted-ri` | regular grid `RI_REAL_RANGE`; one solve per value, or one solve for the whole axis with `--shifted-ri` | list of isotropic values, one solve for the whole list |
 | Volume | list `r_v_base_list` (volume-equivalent radius) | grid `D_VE_RANGE` (volume-equivalent diameter, log-spaced) | one lattice per size |
 | Shape parameters | lists `bc_ratio_list`, `ab_ratio_list`, `gre_beta_list` | grid `LOG10_AR_RANGE` (aspect ratio `b/c`) | one lattice per shape |
 | Orientation | Euler-angle grid `N_alpha_ori` × `N_beta_ori` × `N_gamma_ori` | grid in `cos(theta_o)` and `phi_o` | any list of Euler angles |
@@ -110,7 +110,7 @@ There are three ways to sweep the parameters. Choose by the particle shape and b
 How each parameter is handled:
 
 - **Orientation** is never looped. All orientations of one particle are right-hand sides of one block-Krylov solve. For spheroids only the polar angle is solved, and the other two Euler angles are filled in analytically (spheroid mode).
-- **Refractive index** needs a new solve per value, except for a homogeneous isotropic particle. There the shifted block GMRES solves all values in one process on a common lattice. It is available as `--shifted-ri` in the spheroid sweep and through the API. `run_dda.py` does not use it. Birefringent particles are always solved one refractive index at a time.
+- **Refractive index** needs a new solve per value, except for a homogeneous isotropic particle. There the shifted block GMRES solves all values in one process on a common lattice. It is available as `--shifted-ri` in both sweep drivers and through the API. Birefringent particles are always solved one refractive index at a time.
 - **Volume and shape** change the lattice. Every combination is a separate lattice and a separate solve.
 - **Wavelength and medium** are given as `(wl_0, m_m)` pairs in both drivers. Each pair is a separate set of solves.
 
@@ -127,6 +127,17 @@ The three ways are described below.
    - Output filename: `OUTPUT_FILE` in `run_dda.py`
 2. Execute `dda_results/create_h5py.ipynb` to generate the HDF5 output file.
 3. Execute `run_dda.py`. The sweep loops over all combinations of `wl_m_m_pairs`, `m_p_xyz_list`, `r_v_base_list` and the shape parameters. Each combination is one block solve for all orientations. For spheroids (`ab_ratio=1`, `gre_beta=0`), spheroid mode is activated automatically: only `N_beta` DDA solves are performed, and the full orientation grid is filled analytically.
+   **Shifted refractive-index sweep (`--shifted-ri`).** With this flag all isotropic entries of `m_p_xyz_list` (equal `x`, `y` and `z` values) of a (shape, wavelength) slot are solved by one shifted block-GMRES process:
+
+   ```sh
+   python run_dda.py --shifted-ri --output dda_results/my_new_sweep.hdf5
+   ```
+
+   - The isotropic entries of a slot share one lattice, built for the largest `|m|` among the isotropic entries of the list. The default mode builds a separate lattice for each entry. The results of the two modes therefore differ at the level of the discretization error, except for the entry with the largest `|m|`.
+   - Anisotropic entries are solved one at a time on their own lattice, exactly as in the default mode.
+   - The time of a slot is close to that of its hardest refractive index alone. The gain grows with the number of isotropic entries.
+   - Use the flag for new output files only. A file keeps the mode it was started with, and resuming it in the other mode is refused. The attributes `shifted_ri` and `lattice_policy` of the group `target` mark a file made in this mode.
+   - `--output PATH` selects the output file in both modes. Without it the script uses `OUTPUT_FILE`.
 4. Use `dda_results/check_h5py.ipynb` to inspect the HDF5 file contents and verify results.
 5. Use `plot_dda_results.ipynb` to visualize the parameter-swept DDA results.
 
@@ -351,6 +362,10 @@ Spheroid mode reduces both peak memory and computation time by a factor of **1/4
 - v0.8.2: `S_bk_OCBS` (*S*<sub>bak</sub> of CAS-v2) is now (−*S*<sub>11</sub> + *S*<sub>22</sub>)/2 at the backward direction. This is the corrected Eq. (28) of Moteki and Adachi (2024), given in the erratum to that paper. Up to v0.8.1 the code followed the printed equation with 1/√2 in place of 1/2. The change applies to `compute_OCBS_observable_S_bk`, to `compute_observables_shifted` and to the Mie reference `mie_compute_q_and_s`.
 - Values of `S_bk_OCBS` and `S_bk_OCBS_mie` from v0.8.1 or earlier are √2 times the present ones. The phase is the same, and so is the ratio of the DDA value to the Mie value. This includes the files under `dda_results/paper/`, which are kept as produced. Multiply their backward amplitudes by 1/√2 to compare with v0.8.2.
 - The forward-scattering amplitudes and the cross sections are not affected.
+
+### Shifted refractive-index sweep for general shapes (v0.8.3)
+- v0.8.3: `run_dda.py --shifted-ri` solves all isotropic entries of `m_p_xyz_list` of a slot with one shifted block-GMRES process, for any GRE shape. The default mode is unchanged. `run_dda.py --output` selects the output file.
+- v0.8.3: The usage section explains how to sweep refractive index, volume, shape and orientation with the two drivers and with the API.
 
 ### Environment
 - **Python**: 3.12 (Windows) → **3.13 (Linux/WSL2)**

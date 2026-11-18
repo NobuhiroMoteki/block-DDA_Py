@@ -382,6 +382,7 @@ This project is licensed under the MIT License. See the LICENSE file for details
     - Moteki, N. (2016). Discrete dipole approximation for black carbon-containing aerosols in arbitrary mixing state: A hybrid discretization scheme. Journal of Quantitative Spectroscopy and Radiative Transfer, 178, 306–314.
     - Yurkin, M. A., & Hoekstra, A. G. (2007). The discrete dipole approximation: An overview and recent developments. Journal of Quantitative Spectroscopy and Radiative Transfer, 106(1–3), 558–589.
     - Draine, B. T., & Flatau, P. J. (1994). Discrete-dipole approximation for scattering calculations. Journal of the Optical Society of America A, 11(4), 1491–1499.
+    - Chaumet, P. C., & Rahmani, A. (2009). Coupled-dipole method for magnetic and negative-refraction materials. Journal of Quantitative Spectroscopy and Radiative Transfer, 110(1–2), 22–29. (polarizability with radiative correction used in this code)
 
 - Gaussian Random Ellipsoid
     - Muinonen, K., & Pieniluoma, T. (2011). Light scattering by Gaussian random ellipsoid particles: First results with discrete-dipole approximation. Journal of Quantitative Spectroscopy and Radiative Transfer, 112(11), 1747–1752.
@@ -393,6 +394,7 @@ This project is licensed under the MIT License. See the LICENSE file for details
   - Frommer, A., & Glässner, U. (1998). Restarted GMRES for shifted linear systems. SIAM Journal on Scientific Computing, 19(1), 15–26.
   - Argentin, C., Inzhevatkin, K. G., & Yurkin, M. A. (2026). Efficient refractive-index sweeps in the discrete dipole approximation using shifted Krylov methods. arXiv:2611.15909.
   - El Guennouni, A., Jbilou, K., & Sadok, H. (2003). A block version of BiCGSTAB for linear systems with multiple right-hand sides. Electronic Transactions on Numerical Analysis, 16, 129–142.
+  - Tadano, H., Sakurai, T., & Kuramashi, Y. (2009). Block BiCGGR: a new Block Krylov subspace method for computing high accuracy solutions. JSIAM Letters, 1, 44–47. (form of the Block BiCGSTAB algorithm implemented here)
   - Gu, X. M., Carpentieri, B., Huang, T. Z., & Meng, J. (2016). Block variants of the COCG and COCR methods for solving complex symmetric linear systems with multiple right-hand sides. In Numerical Mathematics and Advanced Applications ENUMATH 2015 (pp. 305–313). Springer International Publishing.
 
 - FFT-based acceleration
@@ -401,6 +403,7 @@ This project is licensed under the MIT License. See the LICENSE file for details
 - Complex Amplitude Sensing (particle measurement technique)
   - Moteki, N. (2021). Measuring the complex forward-scattering amplitude of single particles by self-reference interferometry: CAS-v1 protocol. Optics Express, 29(13), 20688–20714.
   - Moteki, N., & Adachi, K. (2024). Measuring the polarized complex forward-scattering amplitudes of single particles in unbounded fluid flow: CAS-v2 protocol. Optics Express, 32(21), 36500–36522.
+  - Moteki, N., & Adachi, K. (2026). Measuring the polarized complex forward-scattering amplitudes of single particles in unbounded fluid flow: CAS-v2 protocol: erratum. Optics Express (submitted). (corrected definition of *S*<sub>bak</sub>)
 
 ## 📢 Author
 Name: Nobuhiro Moteki

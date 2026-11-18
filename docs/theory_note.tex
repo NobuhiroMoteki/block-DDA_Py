@@ -595,8 +595,10 @@ Their stopping test uses the residual of the preconditioned system.
 \subsubsection{Block-BiCGSTAB}
 \label{sec:bicgstab}
 
-Block-BiCGSTAB~\cite{Tadano2009} extends the stabilised bi-conjugate
-gradient method to block systems.
+Block-BiCGSTAB~\cite{ElGuennouni2003} extends the stabilised
+bi-conjugate gradient method to block systems.
+The implementation follows the form of the algorithm given by Tadano et
+al.~\cite{Tadano2009}.
 It is suitable for general (non-symmetric) matrices.
 Each iteration requires two block MVPs (lines~1 and~4 of
 Table~\ref{tab:bicgstab}).
@@ -2225,17 +2227,24 @@ The backward amplitude follows \eqref{eq:S-bk-amplitude-matrix}.
   \textit{J.\ Quant.\ Spectrosc.\ Radiat.\ Transfer} \textbf{110},
   22--29 (2009).
 
+\bibitem{ElGuennouni2003}
+  A.~El~Guennouni, K.~Jbilou, and H.~Sadok,
+  ``A block version of BiCGSTAB for linear systems with multiple
+  right-hand sides,''
+  \textit{Electron.\ Trans.\ Numer.\ Anal.} \textbf{16}, 129--142 (2003).
+
 \bibitem{Tadano2009}
   H.~Tadano, T.~Sakurai, and Y.~Kuramashi,
-  ``Block BiCGSTAB($\ell$) for linear systems with multiple right-hand
-  sides,''
+  ``Block BiCGGR: a new block Krylov subspace method for computing high
+  accuracy solutions,''
   \textit{JSIAM Lett.} \textbf{1}, 44--47 (2009).
 
 \bibitem{Gu2016}
-  X.-M.~Gu, T.-Z.~Huang, L.~Li, H.-B.~Li, T.~Sogabe, and M.~Clemens,
-  ``Block variants of COCG and COCR methods for solving complex symmetric
-  linear systems with multiple right-hand sides,''
-  arXiv:1611.09813 (2016).
+  X.-M.~Gu, B.~Carpentieri, T.-Z.~Huang, and J.~Meng,
+  ``Block variants of the COCG and COCR methods for solving complex
+  symmetric linear systems with multiple right-hand sides,''
+  in \textit{Numerical Mathematics and Advanced Applications ENUMATH 2015}
+  (Springer, 2016), pp.~305--313; arXiv:1601.05362.
 
 \bibitem{Muinonen2011}
   K.~Muinonen and T.~Pieniluoma,

@@ -12,12 +12,12 @@ A Python code for the Discrete Dipole Approximation (DDA) using block-Krylov typ
 4. The lattice spacing is set directly from the user-specified **dpl** (dipoles per wavelength inside the particle): `d = λ₀ / (max|m_p| × dpl)`. The default is `dpl=17`. After discretisation, the lattice is rescaled so that the volume-equivalent radius matches `r_v_base` exactly (**volume-preserving lattice rescaling**; see [docs/theory_note.pdf](docs/theory_note.pdf), Sec. 8.3–8.4).
 5. Supports simulation of the key quantities in the Complex Amplitude Sensing version 2 ([CAS-v2](https://doi.org/10.1364/OE.533776)): the polarized complex forward-scattering amplitudes {Re*S*(0°)<sub>*s*</sub>, Im*S*(0°)<sub>*s*</sub>, Re*S*(0°)<sub>*p*</sub>, Im*S*(0°)<sub>*p*</sub>} and the complex backward-scattering amplitude *S*<sub>bak</sub> = (−*S*<sub>11</sub> + *S*<sub>22</sub>)/2 (definition of the erratum to the CAS-v2 paper, from v0.8.2).
 6. For reference, block-DDA_Py outputs a comparison of the DDA solution to the Mie solution for a volume-equivalent sphere with axes-average refractive index.
-7. Supports parameter sweeps over vacuum wavelength, medium refractive index, particle refractive index (including anisotropic cases), and shape parameters, with results stored in HDF5 format.
+7. Supports parameter sweeps over vacuum wavelength, medium refractive index, particle refractive index (including anisotropic cases), particle size and shape parameters, with results stored in HDF5 format.
 8. **Spheroid mode**: For spheroids (`ab_ratio=1`, `beta=0`), the azimuthal orientation average is computed analytically from a single DDA solve per polar angle, reducing the required number of solves from $N_\theta \times N_\phi$ to $N_\theta$ (see [docs/theory_note.pdf](docs/theory_note.pdf), Sec. 9). While the T-matrix method is generally faster for spheroids, it becomes numerically unstable at extreme aspect ratios; DDA with spheroid mode provides a stable alternative in such regimes.
 9. **Shifted refractive-index sweep**: For a homogeneous isotropic particle, all refractive indices of a sweep are solved by one shifted block-GMRES process on a common lattice. The cost is close to that of the single hardest refractive index (see [docs/theory_note.pdf](docs/theory_note.pdf), Sec. 5).
 
 ### Algorithms
-1. block-DDA_Py uses [block-Krylov methods](https://people.math.ethz.ch/~mhg/pub/delhipap.pdf) for iteratively solving the matrix equation, enabling batch computation for many incident beams simultaneously.
+1. block-DDA_Py solves the matrix equation with an unrestarted block GMRES, a [block-Krylov method](https://people.math.ethz.ch/~mhg/pub/delhipap.pdf). All incident beams are solved simultaneously.
 2. A batch solution for many incident beams is internally converted to the batch solution for many orientations through rotational transformation.
 3. Fast matrix-vector products via the [Goodman 3D FFT algorithm](https://doi.org/10.1364/OL.16.001198): the interaction tensor is stored in a doubled grid of shape `(2Nx, 2Ny, 2Nz, 3, 3)` and convolved using `scipy.fft.fftn/ifftn` with multi-threaded batch FFT.
 4. Multi-orientation batch processing is fully vectorized using NumPy/SciPy broadcasting, with no external parallelization library required.
@@ -26,7 +26,7 @@ A Python code for the Discrete Dipole Approximation (DDA) using block-Krylov typ
 
 There are some notable limitations of the current block-DDA_Py:
 
-1. Supported shape model is only GRE.
+1. The shape models are the GRE and a cluster of two equal spheres (`shape_model/two_sphere_cluster.py`). The notebooks and the two sweep drivers use the GRE only.
 2. Current shape model supports only single-component particles (refractive index is uniform inside each particle).
 3. Supported incident beam type is only a plane wave or a set of plane waves from different directions.
 
@@ -178,13 +178,15 @@ For dedicated spheroid sweeps over a regular grid of physical parameters, use `r
 
 3. See `read_spheroid_sweep.ipynb` for how to browse the file overview and retrieve results interactively.
 
-**Output HDF5 structure** (`dda_results/dda_results_spheroid_sweep.h5`):
+**Output HDF5 structure** (`dda_results/dda_results_spheroid_sweep.h5` for the preset `air`):
 
 - Shared grid axes (root): `log_D_ve_grid` (log10 of the volume-equivalent diameter in um), `RI_real_grid`, `log_AR_grid`, `cos_theta_o_half_grid`, `phi_o_grid`
 - Per-wavelength groups (e.g. `wl_0p453/`, `wl_0p638/`, `wl_0p834/`):
   - Forward scattering amplitudes (5D, float64): `S_fw_theta_re`, `S_fw_theta_im`, `S_fw_phi_re`, `S_fw_phi_im` — shape `(N_Dve, N_RI, N_AR, N_u_half, N_ph)`
   - Convergence flag: `converged` — shape `(N_Dve, N_RI, N_AR)`, bool
-  - Group attribute `wl_0` stores the exact wavelength value
+  - Group attributes `wl_0` and `m_m` store the exact wavelength and the medium refractive index
+- Root attributes: `m_imag`, `delta_n_eff`, `rng_seed`, `solver_tol`, `block_dda_version`, and `m_m` of the first wavelength. `shifted_ri` and `lattice_policy` are present only in a file made with `--shifted-ri`.
+- Group `provenance`: attributes `producer_repo`, `producer_version`, `git_sha`, `git_dirty`, `contract_version`, `config_hash` and `created_utc`. `config_hash` identifies the grid and the settings of the sweep.
 - Symmetry operations (cos_theta_o mirror to [-1,1], phi_o extension to [0,2pi]) are handled by the downstream consumer, not by block-DDA_Py
 
 ### Refractive-index sweep of any isotropic particle through the API
@@ -242,16 +244,21 @@ DDA_FFT_WORKERS=$(nproc) python run_dda.py
 
 ### Memory requirements
 
-The two dominant memory consumers are:
+The dominant memory consumers are:
 
-| Array | Shape | Size formula |
-|-------|-------|--------------|
+| Array | Shape | Size |
+|-------|-------|------|
 | Interaction tensor FFT (static, allocated once) | `(2Nx, 2Ny, 2Nz, 3, 3)` complex128 | `1152 × N_cuboid` bytes |
-| Block polarization arrays (peak, during MVP) | `(2Nx, 2Ny, 2Nz, 3, L)` × 2 complex128 | `768 × L × N_cuboid` bytes |
+| Work arrays of one matrix–vector product (four at the peak) | `(2Nx, 2Ny, 2Nz, 3, L)` complex128 each | `1536 × L × N_cuboid` bytes |
+| Krylov basis of the block GMRES (grows by one block per iteration) | `(3 N_dip, L)` complex128 per block | `48 × L × N_dip × (n + 1)` bytes |
 
-**Peak memory ≈ `(1152 + 768 × L) × N_cuboid` bytes**
+**Peak memory ≈ `(1152 + 1536 × L) × N_cuboid + 48 × L × N_dip × (n + 1)` bytes**
 
-where `N_cuboid = Nx × Ny × Nz` is the total number of cuboid grid cells (including vacuum) and `L` is the number of orientations.
+Here `N_cuboid = Nx × Ny × Nz` is the number of cuboid grid cells (including vacuum), `N_dip` is the number of dipoles inside the particle (about half of `N_cuboid` for a sphere), `L` is the number of orientations that are solved and `n` is the number of block-GMRES iterations.
+
+The estimate was compared with the measured peak memory of the benchmark runs (Sec. 5.9 of [docs/theory_note.pdf](docs/theory_note.pdf)). For `L = 64` the two agree within 4 %. For `L = 5` and `L = 13` the measured value is larger by 0.2 to 0.4 GB of fixed overhead.
+
+The shifted refractive-index sweep needs the memory of one solve on its lattice. It does not grow with the number of refractive indices.
 
 The cuboid size scales approximately as:
 
@@ -272,40 +279,39 @@ Both modes output 800 orientations. The difference is the number of DDA solves (
 
 #### Peak memory
 
+Estimated with the formula above for a sphere-like particle (`N_dip ≈ 0.52 N_cuboid`) and `n = 10` iterations.
+
 | r_v (μm) | N_cuboid | General mode | Spheroid mode |
 |-----------|----------|---------------------|---------------------|
-| 0.3       | ~22,000  | ~13 GB              | ~0.4 GB             |
-| 0.5       | ~100,000 | ~61 GB              | ~1.6 GB             |
-| 1.0       | ~800,000 | ~491 GB             | ~13 GB              |
+| 0.3       | ~22,000  | ~31 GB              | ~0.8 GB             |
+| 0.5       | ~100,000 | ~145 GB             | ~3.7 GB             |
+| 1.0       | ~800,000 | ~1160 GB            | ~30 GB              |
+
+The terms that depend on *L* dominate, so the spheroid mode reduces the peak memory by about *L*<sub>spheroid</sub> / *L*<sub>general</sub> = 20 / 800 = **1/40**.
 
 #### Computation time
 
-Extrapolated from a smaller benchmark (r_v = 0.1 μm, Intel Core i7-13700H, 14 cores) assuming $T \propto L \times N_\text{cuboid} \log N_\text{cuboid}$.
+Measured solve time of one particle with the block GMRES (oblate spheroid with `b/c = 2`, m_p = 1.70 in air, λ₀ = 0.638 μm, tolerance 1e-2; two Intel Xeon E5-2620 v4, 16 threads). The number of iterations is given in parentheses.
 
-| r_v (μm) | N_cuboid | General mode | Spheroid mode |
-|-----------|----------|---------------------|---------------------|
-| 0.3       | ~22,000  | ~1 min              | ~2 s                |
-| 0.5       | ~100,000 | ~6 min              | ~9 s                |
-| 1.0       | ~800,000 | ~58 min             | ~1.4 min            |
+| D_ve (μm) | N_cuboid | *L* = 5 | *L* = 13 | *L* = 64 |
+|-----------|----------|---------|----------|----------|
+| 0.6       | 27,380   | 2.1 s (12)  | 3.6 s (10)  | 12.5 s (8)  |
+| 1.0       | 111,600  | 21.8 s (31) | 29.5 s (20) | 76.0 s (11) |
 
-Note: actual times for large N_cuboid may be longer due to memory-bandwidth limitations, but the general/spheroid ratio remains valid.
-
-#### Summary
-
-Spheroid mode reduces both peak memory and computation time by a factor of **1/40** (*L*<sub>spheroid</sub> / *L*<sub>general</sub> = 20 / 800).
+In this range the solve time grows more slowly than *L*, because the number of iterations falls as *L* grows. The time saved by the spheroid mode is therefore smaller than the memory it saves. Per iteration the matrix–vector product costs in proportion to *L* and the orthogonalization of the block GMRES in proportion to *L*². Solve times for several hundred orientations have not been measured.
 
 ---
 
-## 🔄 Changes from Previous Version
+## 🔄 Change Log
 
-### Algorithm
+### Algorithm (v0.3.0)
 | Module | Old | New |
 |--------|-----|-----|
 | `mvp_fft/mvp_fft.py` | Barrowes (2001) asymmetric multilevel block-Toeplitz FFT | Goodman (1991) 3D FFT on doubled grid `(2Nx,2Ny,2Nz,3,3)` |
 | `bl_krylov/bl_krylov.py` | `ray`-based multiprocessing parallelization | NumPy/SciPy broadcasting — fully vectorized, no external parallelism |
 | `shape_model/gaussian_ellipsoid.py` | `numba` JIT-compiled nested loops | Pure NumPy `cumsum`-based interior detection |
 
-### Parameter sweep (run_dda.py + dda_results/)
+### Parameter sweep (run_dda.py + dda_results/) (v0.3.0)
 | Item | Old | New |
 |------|-----|-----|
 | Wavelength / medium RI | Single `wl_0` + list of `m_m` | List of `(wl_0, m_m)` pairs: `wl_m_m_pairs` |
@@ -313,7 +319,7 @@ Spheroid mode reduces both peak memory and computation time by a factor of **1/4
 | GRE geometry reuse | Rebuilt for every (wl, m_m, m_p) | Rebuilt per (wl_0, m_p_xyz) combination (lattice spacing depends on dpl) |
 | HDF5 dataset shape | `(N_mm, N_rv, N_bc, N_ab, N_bt, N_ori)` | `(N_pairs, N_mp, N_rv, N_bc, N_ab, N_bt, N_ori)` |
 
-### Dependencies
+### Dependencies (v0.3.0, with later additions)
 | Package | Status |
 |---------|--------|
 | `ray` | **Removed** (replaced by NumPy broadcasting) |
@@ -322,6 +328,11 @@ Spheroid mode reduces both peak memory and computation time by a factor of **1/4
 | `scipy` | Retained — `scipy.fft` (multi-threaded FFT), `scipy.spatial.transform` (batch rotation) |
 | `scikit-learn` | Retained — `KDTree` for lattice neighbor search |
 | `ipympl` | Added — interactive 3D plots in notebooks |
+| `pytest` | Added in v0.8.0 — test suite under `tests/` |
+
+### Environment (v0.3.0)
+- **Python**: 3.12 (Windows) → **3.13 (Linux/WSL2)**
+- **Virtual environment**: `myenv` (Windows) → `.venv` (Linux, managed by `uv`)
 
 ### Lattice spacing (v0.4.0)
 | Item | Old | New |
@@ -368,10 +379,6 @@ Spheroid mode reduces both peak memory and computation time by a factor of **1/4
 ### Shifted refractive-index sweep for general shapes (v0.8.3)
 - v0.8.3: `run_dda.py --shifted-ri` solves all isotropic entries of `m_p_xyz_list` of a slot with one shifted block-GMRES process, for any GRE shape. The default mode is unchanged. `run_dda.py --output` selects the output file.
 - v0.8.3: The usage section explains how to sweep refractive index, volume, shape and orientation with the two drivers and with the API.
-
-### Environment
-- **Python**: 3.12 (Windows) → **3.13 (Linux/WSL2)**
-- **Virtual environment**: `myenv` (Windows) → `.venv` (Linux, managed by `uv`)
 
 ---
 

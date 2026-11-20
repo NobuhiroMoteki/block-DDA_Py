@@ -13,7 +13,7 @@ The last section explains the version numbers and tags.
 | 0.8.2 | all before 0.8.2 | The backward amplitude of the OCBS signal had the factor `1/√2` of the printed Eq. (28) of Moteki and Adachi (2024). The corrected equation, given in the erratum to that paper, has `1/2`. | `S_bk_OCBS` and its Mie reference `S_bk_OCBS_mie`: the output of `run_dda.py` and of the paper scripts, and the files under `dda_results/paper/`. The earlier values are √2 times the corrected ones. The phase and the ratio of the DDA value to the Mie value are unchanged. Cross sections and forward amplitudes are not affected. | Multiply the stored backward amplitudes by `1/√2`. No new calculation is needed. |
 | 0.6.0 | 0.1.1 to 0.5.0 | The random orientations drew the Euler angle β uniformly in [0, π]. Orientations that are uniform on the sphere need cos β uniform in [−1, 1]. Orientations with the particle z axis near the propagation direction were drawn too often. | Averages over the stored orientations of nonspherical particles. The values of each single orientation are correct. The spheroid mode of 0.5.0 is not affected. | Recalculate with 0.6.0 or later. Or weight each stored orientation by sin β in the average. The Euler angles are stored in the output since 0.2.1. |
 
-## Documents after 0.8.3 (2026-11-18 to 2026-11-20)
+## 0.8.4 (2026-11-20)
 
 Same code as 0.8.3. The documents are brought up to date.
 
@@ -240,9 +240,10 @@ The version of the published paper: N. Moteki, J. Quant. Spectrosc. Radiat. Tran
 
 ## Version numbers
 
-- Tags exist for 0.1.1, 0.2.1 to 0.2.4, 0.3.0, 0.4.0, 0.5.0, 0.6.0, 0.7.8, 0.8.2 and
-  0.8.3. The other versions are commits whose message names the version.
-- GitHub releases exist for 0.1.1, 0.2.4, 0.3.0, 0.4.0, 0.5.0, 0.6.0, 0.7.8 and 0.8.3.
+- Tags exist for 0.1.1, 0.2.1 to 0.2.4, 0.3.0, 0.4.0, 0.5.0, 0.6.0, 0.7.8, 0.8.2, 0.8.3
+  and 0.8.4. The other versions are commits whose message names the version.
+- GitHub releases exist for 0.1.1, 0.2.4, 0.3.0, 0.4.0, 0.5.0, 0.6.0, 0.7.8, 0.8.3 and
+  0.8.4.
 - The attribute `block_dda_version` that `run_dda_spheroid_sweep.py` writes stayed at
   `0.7.2` from 0.7.2 until 0.8.0. A sweep file with this value can come from any version in
   that range. From 2026-07-05 the attribute `git_sha` of the group `provenance` identifies

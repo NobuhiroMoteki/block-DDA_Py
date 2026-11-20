@@ -5,6 +5,8 @@ A Python code for the Discrete Dipole Approximation (DDA) using block-Krylov typ
 
 **Version used in the published paper.** The DDA results of Moteki (2026), *J. Quant. Spectrosc. Radiat. Transfer* 362, 110046, were produced with [v0.7.8](https://github.com/NobuhiroMoteki/block-DDA_Py/releases/tag/v0.7.8). Use that release to reproduce the paper. Later versions add the shifted refractive-index sweep (v0.8.0 to v0.8.3) and follow the corrected definition of the backward-scattering amplitude *S*<sub>bak</sub> (from v0.8.2). The corrected *S*<sub>bak</sub> is 1/√2 times that of v0.7.8. The solver, the cross sections and the forward-scattering amplitudes are the same as in v0.7.8 when the shifted sweep is not used.
 
+**Changes and corrections:** see [CHANGELOG.md](CHANGELOG.md). Its first section lists the corrections that change numerical results, with the affected versions.
+
 ### Main Features
 1. Supports batch calculations for many particle orientations using a **deterministic uniform Euler angle grid** on SO(3): `N_alpha` × `N_beta` × `N_gamma` divisions, with equal-area polar sampling (`cos(beta)` equally spaced).
 2. Supports birefringent particle materials (anisotropic complex refractive index along x, y, z axes).
@@ -304,81 +306,7 @@ In this range the solve time grows more slowly than *L*, because the number of i
 
 ## 🔄 Change Log
 
-### Algorithm (v0.3.0)
-| Module | Old | New |
-|--------|-----|-----|
-| `mvp_fft/mvp_fft.py` | Barrowes (2001) asymmetric multilevel block-Toeplitz FFT | Goodman (1991) 3D FFT on doubled grid `(2Nx,2Ny,2Nz,3,3)` |
-| `bl_krylov/bl_krylov.py` | `ray`-based multiprocessing parallelization | NumPy/SciPy broadcasting — fully vectorized, no external parallelism |
-| `shape_model/gaussian_ellipsoid.py` | `numba` JIT-compiled nested loops | Pure NumPy `cumsum`-based interior detection |
-
-### Parameter sweep (run_dda.py + dda_results/) (v0.3.0)
-| Item | Old | New |
-|------|-----|-----|
-| Wavelength / medium RI | Single `wl_0` + list of `m_m` | List of `(wl_0, m_m)` pairs: `wl_m_m_pairs` |
-| Particle RI | Single `m_p_xyz` | List of `m_p_xyz`: `m_p_xyz_list` (supports anisotropic sweep) |
-| GRE geometry reuse | Rebuilt for every (wl, m_m, m_p) | Rebuilt per (wl_0, m_p_xyz) combination (lattice spacing depends on dpl) |
-| HDF5 dataset shape | `(N_mm, N_rv, N_bc, N_ab, N_bt, N_ori)` | `(N_pairs, N_mp, N_rv, N_bc, N_ab, N_bt, N_ori)` |
-
-### Dependencies (v0.3.0, with later additions)
-| Package | Status |
-|---------|--------|
-| `ray` | **Removed** (replaced by NumPy broadcasting) |
-| `numba` | **Removed** (replaced by pure NumPy) |
-| `pywin32` | **Removed** (Windows-only) |
-| `scipy` | Retained — `scipy.fft` (multi-threaded FFT), `scipy.spatial.transform` (batch rotation) |
-| `scikit-learn` | Retained — `KDTree` for lattice neighbor search |
-| `ipympl` | Added — interactive 3D plots in notebooks |
-| `pytest` | Added in v0.8.0 — test suite under `tests/` |
-
-### Environment (v0.3.0)
-- **Python**: 3.12 (Windows) → **3.13 (Linux/WSL2)**
-- **Virtual environment**: `myenv` (Windows) → `.venv` (Linux, managed by `uv`)
-
-### Lattice spacing (v0.4.0)
-| Item | Old | New |
-|------|-----|-----|
-| Lattice spacing formula | Empirical (shape-only) | dpl-based: `d = λ₀ / (max\|m_p\| × dpl)`, default `dpl=17` |
-| Volume consistency | `ve_radius ≈ r_v_base` (approximate) | `ve_radius == r_v_base` exactly (volume-preserving rescaling) |
-
-### Spheroid mode (v0.5.0)
-- For spheroids (`ab_ratio=1`, `gre_beta=0`), azimuthal orientation average is computed analytically
-- DDA solves only $N_\beta$ orientations; full grid filled via constraint relations
-- Verified at machine precision (~1e-16) in `test_spheroid_symmetry.ipynb`
-
-### Orientation sampling (v0.6.0)
-| Item | Old | New |
-|------|-----|-----|
-| Sampling method | Random (Monte Carlo) | Deterministic uniform grid on SO(3) |
-| User specifies | `num_orientations` (total count) | `N_alpha_ori`, `N_beta_ori`, `N_gamma_ori` (grid divisions) |
-| Polar angle (beta) | `Uniform(0, π)` (biased) | `cos(β)` equally spaced in (−1, 1) (equal-area) |
-
-### Spheroid parameter sweep (v0.7.1 – v0.7.4)
-- v0.7.1: Spheroid-mode parameter-sweep driver with HDF5 output
-- v0.7.2: Multi-wavelength support added to the sweep
-- v0.7.3: Sweep grid range refinements; `.h5` added to `.gitignore`
-- v0.7.4: Interactive notebook replaces the read-example script for HDF5 inspection
-
-### Paper-production sweep and solver upgrades (v0.7.5 – v0.7.8)
-- v0.7.5: Production-sweep infrastructure; DDA ↔ VIEM volume-element parity rule
-- v0.7.6: Auto-`dpl` per particle slot; per-iteration residual history stored; incremental-QR block-GMRES; benchmark material `n20` (m_p = 2.0) added
-- v0.7.7: Bundled paper-production sweep results under `dda_results/paper/`
-- v0.7.8: Manuscript-release snapshot for the JQSRT submission
-
-### Shifted block-GMRES refractive-index sweep (v0.8.0 – v0.8.1)
-- v0.8.0: `bl_gmres_shifted_mvp_fft`: one block-Arnoldi process for all refractive indices of a homogeneous isotropic particle on a common lattice
-- v0.8.0: `DiscreteDipoles.set_interaction_matrix_shifted`, `solve_matrix_equation_shifted`, `compute_observables_shifted`: sweep API; observables are evaluated without assembling the solutions
-- v0.8.0: `run_dda_spheroid_sweep.py --shifted-ri`: the `RI_real` axis is solved in one process per slot; the default mode is unchanged
-- v0.8.0: `tests/`: pytest suite comparing the shifted path with the existing solver and with Mie theory
-- v0.8.1: The per-shift least-squares problems are handled by an incremental block-Givens QR (`lsq_method="incremental"`, default). The dense method of v0.8.0 is kept as `lsq_method="dense"`. At 64 orientations the incremental method cuts the least-squares time by a factor of 2.3 to 6.8. The results of the shifted sweep change at rounding level only
-
-### Corrected backward-scattering amplitude (v0.8.2)
-- v0.8.2: `S_bk_OCBS` (*S*<sub>bak</sub> of CAS-v2) is now (−*S*<sub>11</sub> + *S*<sub>22</sub>)/2 at the backward direction. This is the corrected Eq. (28) of Moteki and Adachi (2024), given in the erratum to that paper. Up to v0.8.1 the code followed the printed equation with 1/√2 in place of 1/2. The change applies to `compute_OCBS_observable_S_bk`, to `compute_observables_shifted` and to the Mie reference `mie_compute_q_and_s`.
-- Values of `S_bk_OCBS` and `S_bk_OCBS_mie` from v0.8.1 or earlier are √2 times the present ones. The phase is the same, and so is the ratio of the DDA value to the Mie value. This includes the files under `dda_results/paper/`, which are kept as produced. Multiply their backward amplitudes by 1/√2 to compare with v0.8.2.
-- The forward-scattering amplitudes and the cross sections are not affected.
-
-### Shifted refractive-index sweep for general shapes (v0.8.3)
-- v0.8.3: `run_dda.py --shifted-ri` solves all isotropic entries of `m_p_xyz_list` of a slot with one shifted block-GMRES process, for any GRE shape. The default mode is unchanged. `run_dda.py --output` selects the output file.
-- v0.8.3: The usage section explains how to sweep refractive index, volume, shape and orientation with the two drivers and with the API.
+The changes of every version are listed in [CHANGELOG.md](CHANGELOG.md). Its first section lists the corrections that change numerical results. Read it if you have results from an earlier version.
 
 ---
 

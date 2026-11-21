@@ -38,7 +38,7 @@ I'll remove these limitations upon user requests and application needs.
 
 ## 🔗 Companion project for high-contrast particles: block-VIEM.jl
 
-For scattering problems where DDA does not converge or provides insufficient accuracy — for example, particles with **high refractive-index contrast** (|m_p/m_m| ≳ 2–3), plasmonic metals (gold, silver, iron oxide aggregates), extreme aspect ratios, or surface roughness features smaller than the DDA lattice spacing — use the companion Julia code [**block-VIEM.jl**](https://github.com/NobuhiroMoteki/block-VIEM.jl).
+For scattering problems where DDA does not converge or provides insufficient accuracy — for example, particles with **high refractive-index contrast** (|m_p/m_m| ≳ 2–3), plasmonic metals (gold, silver, iron oxide aggregates), or extreme aspect ratios — use the companion Julia code [**block-VIEM.jl**](https://github.com/NobuhiroMoteki/block-VIEM.jl).
 
 block-VIEM.jl is a **higher-accuracy successor** that solves the same volume integral equation physics with a tetrahedral-mesh SWG / half-SWG basis, Duffy-transform singular integration, and AIM-FFT-accelerated block-Krylov iteration. The two codes share the same physical input conventions (`wl_0`, `m_m`, `m_p`, including anisotropic `m_p_xyz`), Euler-angle convention (ZYZ intrinsic), GRE shape parametrization, HDF5 output schema, and CAS-v2 observable definitions, so downstream analysis pipelines work with either without modification.
 

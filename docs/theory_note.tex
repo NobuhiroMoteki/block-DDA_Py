@@ -13,7 +13,7 @@
 \large Discrete Dipole Approximation with FFT-accelerated\\
 Block-Krylov Solver for Light Scattering by Arbitrary Particles}
 \author{N.\ Moteki}
-\date{Last updated: 2026-11-20 (corresponds to block-DDA\_Py v0.8.4)}
+\date{Last updated: 2026-11-21 (corresponds to block-DDA\_Py v0.8.4)}
 
 \begin{document}
 \maketitle
@@ -65,8 +65,8 @@ $\boldsymbol{\alpha}$), and unit vectors carry a hat
 \paragraph{Companion code for high-contrast particles.}
 DDA is most efficient when the refractive-index contrast is moderate
 ($|m_p/m_m| \lesssim 2$). For high-contrast targets --- e.g.\ plasmonic
-metals (gold, silver), iron-oxide aggregates, extreme aspect ratios, or
-surface roughness finer than the DDA lattice spacing --- the DDA
+metals (gold, silver), iron-oxide aggregates, or extreme aspect ratios
+--- the DDA
 iteration converges slowly (or not at all) and the discretization error
 is dominated by the staircasing of curved boundaries on the cubic
 lattice. In those regimes the companion code
